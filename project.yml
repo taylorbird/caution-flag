@@ -1,0 +1,49 @@
+name: Cooldown
+options:
+  bundleIdPrefix: com.tbird
+  deploymentTarget:
+    macOS: "15.0"
+  createIntermediateGroups: true
+packages:
+  CooldownCore:
+    path: Packages/CooldownCore
+targets:
+  Cooldown:
+    type: application
+    platform: macOS
+    sources:
+      - path: App/Sources
+    dependencies:
+      - package: CooldownCore
+        product: CooldownCore
+    info:
+      path: App/Info.plist
+      properties:
+        CFBundleName: Cool-Down
+        CFBundleDisplayName: Cool-Down
+        CFBundleShortVersionString: "0.1.0"
+        CFBundleVersion: "1"
+        LSMinimumSystemVersion: "15.0"
+        LSUIElement: true
+        LSApplicationCategoryType: public.app-category.productivity
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.tbird.cooldown
+        PRODUCT_NAME: Cooldown
+        SWIFT_VERSION: "5.0"
+        MACOSX_DEPLOYMENT_TARGET: "15.0"
+        # Stable signing identity so the Accessibility grant survives rebuilds.
+        CODE_SIGN_STYLE: Manual
+        CODE_SIGN_IDENTITY: "Apple Development"
+        DEVELOPMENT_TEAM: UFCDGSKCXB
+        ENABLE_HARDENED_RUNTIME: NO
+        # Accessibility APIs that read other apps are unavailable in the App Sandbox.
+        ENABLE_APP_SANDBOX: NO
+        GENERATE_INFOPLIST_FILE: NO
+schemes:
+  Cooldown:
+    build:
+      targets:
+        Cooldown: all
+    run:
+      config: Debug
