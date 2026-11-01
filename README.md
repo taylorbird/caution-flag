@@ -48,7 +48,9 @@ Settings › Model offers **Automatic** (Apple, then Ollama), **Apple**, **Ollam
 
 Quick checks always run first: all caps, `!!`/`?!`, profanity and insults, "always"/"never", blame phrases ("how many times", "your fault"), passive-aggressive phrases ("per my last message", "as I already said"), and sarcasm markers. They lift the model's score but never lower it. A very short draft (≤30 characters) with no signals skips the model.
 
-The model is asked for JSON with `heat` 0–10, `category`, a one-sentence `reason`, and a calmer `rewrite`. Apple's model uses guided generation (`@Generable`). Ollama uses its structured-output `format` schema, and the parser tolerates code fences, prose, stringified numbers and odd category spellings. If Apple's safety layer declines the text, it's treated as at least warm.
+The model is asked for JSON with `heat` 0–10, `category` and a one-sentence `reason`. Apple's model uses guided generation (`@Generable`) with a prewarmed session. Ollama uses its structured-output `format` schema, and the parser tolerates code fences, prose, stringified numbers and odd category spellings. The calmer rewrite is a separate, plain-text call made only when the red panel opens, and it fills in place.
+
+Timing: the text field is checked every 0.25 s. Quick checks show a nudge about 0.8 s after you stop typing. The Apple model's score follows in about 1.5 s, and a rewrite in another 0.4–0.9 s. If Apple's safety layer declines the text, it's treated as at least warm.
 
 Context: once two drafts in 20 minutes have run warm or hotter, scores get +1 until things settle.
 
@@ -80,8 +82,8 @@ Packages/CooldownCore/    pure logic, unit-tested
   ToneAnalyzer            protocol; FoundationModelsToneAnalyzer, OllamaToneAnalyzer
   SampleMessages          calm / heated / subtle fixtures (tests + harness)
 App/Sources/
-  Capture/                TextCaptureService (AX polling, background queue, 250 ms AX timeout)
-  Analysis/               DraftCoordinator (2 s debounce, immediate every +280 chars), AnalyzerProvider
+  Capture/                TextCaptureService (AX polling every 250 ms on a background queue; focused app read via AX)
+  Analysis/               DraftCoordinator (0.8 s debounce, immediate every +280 chars, instant heuristic nudge), AnalyzerProvider
   Interventions/          InterventionController, non-activating NSPanels, pill/panel/breathing views
   Settings/               SettingsStore, DraftStore
   Windows/                onboarding, settings, saved drafts
