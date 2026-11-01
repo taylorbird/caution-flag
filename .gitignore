@@ -5,3 +5,6 @@ DerivedData/
 xcuserdata/
 *.xcuserstate
 .DS_Store
+
+# Claude Code work state (uncomment to keep it out of git)
+# .claude/work/
