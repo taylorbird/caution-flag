@@ -11,6 +11,7 @@ final class DraftCoordinator {
     private let status: StatusItemController
     private let capture: TextCaptureService
     private let drafts: DraftStore
+    private let misreads: MisreadStore
     private let scorer = HeuristicScorer()
     private var heatTracker = RecentHeatTracker()
     private let log = Logger(subsystem: "com.tbird.cautionflag", category: "analysis")
@@ -37,13 +38,15 @@ final class DraftCoordinator {
     private var analysisTask: Task<Void, Never>?
 
     init(settings: SettingsStore, analyzers: AnalyzerProvider, interventions: InterventionController,
-         status: StatusItemController, capture: TextCaptureService, drafts: DraftStore) {
+         status: StatusItemController, capture: TextCaptureService, drafts: DraftStore,
+         misreads: MisreadStore) {
         self.settings = settings
         self.analyzers = analyzers
         self.interventions = interventions
         self.status = status
         self.capture = capture
         self.drafts = drafts
+        self.misreads = misreads
         interventions.actions = self
     }
 
@@ -247,6 +250,16 @@ extension DraftCoordinator: InterventionActions {
     func saveDraft() -> Bool {
         guard let snapshot = latest, !snapshot.text.isEmpty else { return false }
         drafts.save(text: snapshot.text, appName: snapshot.appName)
+        return true
+    }
+
+    func markNotHeated() -> Bool {
+        guard let snapshot = latest, !snapshot.text.isEmpty, let assessment = session?.lastAssessment else { return false }
+        misreads.record(text: snapshot.text, appName: snapshot.appName, assessment: assessment,
+                        sensitivity: settings.sensitivity)
+        // Quiet for the rest of this draft, but the controller hides the UI after a brief thanks.
+        session?.dismissed = true
+        log.notice("misread filed score=\(assessment.score, format: .fixed(precision: 1)) level=\(assessment.level.rawValue)")
         return true
     }
 
