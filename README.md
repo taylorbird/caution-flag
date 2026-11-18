@@ -1,20 +1,43 @@
-# Cool-Down
+# Caution Flag
 
 A macOS menu bar app that notices when a Slack draft is running hot and gently checks in before you send it. All analysis is local. Nothing you type leaves your Mac.
 
-- **Warm (score 4–6):** the menu bar leaf turns yellow and a small pill appears above the message box. It fades on its own.
-- **Hot (7+):** the leaf turns red and a panel shows why, a calmer rewrite with a Copy button, your own note to yourself, and three choices: **Take 5** (a breathing timer), **Save draft for later**, or **I'm fine, dismiss**.
+- **Warm (score 4–6):** the menu bar flag turns yellow and a small pill appears above the message box. It fades on its own.
+- **Hot (7+):** the flag turns red and a panel shows why, a calmer rewrite with a Copy button, your own note to yourself, and three choices: **Take 5** (a breathing timer), **Save draft for later**, or **I'm fine, dismiss**.
+
+When Caution Flag is watching, the menu bar pennant is green; it turns yellow or red for heated drafts, like racing flags. A plain silhouette means it's off (snoozed, in quiet hours, or watching no apps).
 
 Requires macOS 15+. Apple's on-device model needs macOS 26+ with Apple Intelligence on; otherwise use Ollama.
+
+## Install
+
+```sh
+brew install --cask taylorbird/caution-flag/caution-flag
+```
+
+The tap ([taylorbird/homebrew-caution-flag](https://github.com/taylorbird/homebrew-caution-flag)) is public; this source repo is private. Release zips are signed with Developer ID, notarized, and attached to the tap's GitHub releases.
 
 ## Build and run
 
 ```sh
 brew install xcodegen          # once
-scripts/build.sh --run         # builds Release, installs to /Applications/Cooldown.app, launches it
+scripts/build.sh --run         # builds Release, installs to /Applications/Caution Flag.app, launches it
 ```
 
-The project is generated from `project.yml`, so don't edit `Cooldown.xcodeproj` by hand. It's signed with your Apple Development identity (team `UFCDGSKCXB`) so the Accessibility grant survives rebuilds. With ad-hoc signing, macOS would forget the grant every build.
+The project is generated from `project.yml`, so don't edit `CautionFlag.xcodeproj` by hand. Every build is signed with the Developer ID Application identity (team `UFCDGSKCXB`) with the hardened runtime, so the Accessibility grant survives rebuilds and releases can be notarized. With ad-hoc signing, macOS would forget the grant every build.
+
+Always run the app from `/Applications`: on macOS 27, Bartender can't see the menu bar item of an app run from anywhere else. `build.sh` installs there.
+
+The build number is the git commit count. The icon is an Icon Composer package (`assets/icon/AppIcon.icon`) whose layers come from `swift scripts/render-icon.swift`; the source geometry is `assets/icon/caution-flag.svg`.
+
+## Release
+
+```sh
+scripts/release.sh 0.2.0 --dry-run   # build, notarize, staple, zip; publishes nothing
+scripts/release.sh 0.2.0             # on main, clean tree: also tags, pushes, and updates the tap
+```
+
+The full run sets the version in `project.yml` and commits it. It notarizes with the `notary` keychain profile and checks that Gatekeeper accepts the stapled app. Then it tags `v<version>`, creates a GitHub release with the zip on the tap repo, and bumps the cask's version and sha256. It needs `gh` logged in as `taylorbird` and the tap cloned at `../homebrew-caution-flag`.
 
 Tests and the sample harness live in the core package:
 
@@ -26,19 +49,19 @@ swift run  --package-path Packages/CooldownCore cooldown-harness --ollama --mode
 swift run  --package-path Packages/CooldownCore cooldown-harness --apple --text "per my last message…"
 ```
 
-To check the panels without Slack: `/Applications/Cooldown.app/Contents/MacOS/Cooldown -demo hot` (or `warm`, `breathing`, `onboarding`, `settings`).
+To check the panels without Slack: `"/Applications/Caution Flag.app/Contents/MacOS/Caution Flag" -demo hot` (or `warm`, `breathing`, `onboarding`, `settings`).
 
 ## Permissions
 
-Cool-Down needs **Accessibility** access so it can read the focused text field in apps you've chosen. The first launch opens a setup guide:
+Caution Flag needs **Accessibility** access so it can read the focused text field in apps you've chosen. The first launch opens a setup guide:
 
 1. Click **Open Accessibility Settings**.
-2. Find **Cooldown** in System Settings › Privacy & Security › Accessibility and switch it on.
+2. Find **Caution Flag** in System Settings › Privacy & Security › Accessibility and switch it on.
 3. The guide's checkmark turns green within a second.
 
-If it's switched on but not detected (usually after moving or re-signing the app), remove it with **–**, then add `/Applications/Cooldown.app` again.
+If it's switched on but not detected (usually after moving or re-signing the app), remove it with **–**, then add `/Applications/Caution Flag.app` again.
 
-Slack is an Electron app, so Cool-Down sets `AXManualAccessibility` on it to make Chromium expose its accessibility tree. To find the composer, it tries the app's focused element, then the system-wide one, then descendants of a focused wrapper group, then the last composer it found. As a last resort, and at most once every 2 s, it does a bounded search of the window. Password and secure fields are skipped.
+Slack is an Electron app, so Caution Flag sets `AXManualAccessibility` on it to make Chromium expose its accessibility tree. To find the composer, it tries the app's focused element, then the system-wide one, then descendants of a focused wrapper group, then the last composer it found. As a last resort, and at most once every 2 s, it does a bounded search of the window. Password and secure fields are skipped.
 
 "Clear it from the message box" (offered only after you save a draft) first tries an Accessibility write. If Slack ignores that, it sends ⌘A then Delete to Slack.
 
@@ -62,14 +85,14 @@ ollama serve &                 # or launch the Ollama app
 ollama pull llama3.2:3b        # or qwen2.5:3b
 ```
 
-Then go to Settings › Model › Ollama and click **Test connection**. The first request after a restart takes several seconds while the model loads; Cool-Down asks Ollama to keep it warm for 30 minutes.
+Then go to Settings › Model › Ollama and click **Test connection**. The first request after a restart takes several seconds while the model loads; Caution Flag asks Ollama to keep it warm for 30 minutes.
 
 ## Privacy model
 
 - Text is read only from apps you've switched on, and only while that app is in front.
 - Analysis runs on-device: Apple's model, or Ollama at a **loopback** address. `LoopbackGuard` rejects any other host in code, and that check is unit-tested.
-- Draft text lives in memory only. It isn't logged, persisted or sent anywhere. Logs (`log stream --predicate 'subsystem == "com.tbird.cooldown"'`) contain scores and levels only.
-- The one exception: **Save draft for later** writes that draft to `~/Library/Application Support/Cooldown/drafts.json` (mode 600). You can delete drafts from the menu bar › Saved Drafts.
+- Draft text lives in memory only. It isn't logged, persisted or sent anywhere. Logs (`log stream --predicate 'subsystem == "com.tbird.cautionflag"'`) contain scores and levels only.
+- The one exception: **Save draft for later** writes that draft to `~/Library/Application Support/Caution Flag/drafts.json` (mode 600). You can delete drafts from the menu bar › Saved Drafts.
 - Settings (sensitivity, watched apps, quiet hours, your personal note) live in UserDefaults.
 
 ## Layout

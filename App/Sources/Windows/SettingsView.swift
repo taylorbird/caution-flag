@@ -31,7 +31,7 @@ private struct GeneralSettings: View {
                     } maximumValueLabel: {
                         Text("Watchful")
                     }
-                    Text("Higher means Cool-Down speaks up sooner. It also gets a little more watchful on its own after a few heated drafts in a row.")
+                    Text("Higher means Caution Flag speaks up sooner. It also gets a little more watchful on its own after a few heated drafts in a row.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
             }
@@ -109,7 +109,7 @@ private struct AppsSettings: View {
             } header: {
                 Text("Watch these apps")
             } footer: {
-                Text("Cool-Down only reads text fields in apps switched on here, and only while that app is in front.")
+                Text("Caution Flag only reads text fields in apps switched on here, and only while that app is in front.")
                     .font(.caption).foregroundStyle(.secondary)
             }
             Section {
@@ -170,7 +170,7 @@ private struct ModelSettings: View {
                 if let testResult {
                     Text(testResult).font(.caption).textSelection(.enabled)
                 }
-                Text("Only addresses on this Mac are accepted (localhost, 127.0.0.1, ::1). Cool-Down refuses to send text anywhere else.")
+                Text("Only addresses on this Mac are accepted (localhost, 127.0.0.1, ::1). Caution Flag refuses to send text anywhere else.")
                     .font(.caption).foregroundStyle(.secondary)
             }
         }
@@ -210,7 +210,7 @@ private struct PrivacySettings: View {
                 bullet("Password and other secure fields are skipped entirely.")
                 bullet("Analysis runs on this Mac: Apple's on-device model, or an Ollama server at a localhost address. Any other address is refused in code.")
                 bullet("Draft text lives in memory only. It is never logged, never written to disk, and never sent over the network.")
-                bullet("The one exception: when you click \"Save draft for later\", that draft is written to ~/Library/Application Support/Cooldown/drafts.json (readable only by you). Delete drafts any time from Saved Drafts.")
+                bullet("The one exception: when you click \"Save draft for later\", that draft is written to ~/Library/Application Support/Caution Flag/drafts.json (readable only by you). Delete drafts any time from Saved Drafts.")
                 bullet("Diagnostic logs contain scores and levels, never text.")
             }
             .frame(maxWidth: .infinity, alignment: .leading)

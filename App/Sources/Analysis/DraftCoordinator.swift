@@ -13,7 +13,7 @@ final class DraftCoordinator {
     private let drafts: DraftStore
     private let scorer = HeuristicScorer()
     private var heatTracker = RecentHeatTracker()
-    private let log = Logger(subsystem: "com.tbird.cooldown", category: "analysis")
+    private let log = Logger(subsystem: "com.tbird.cautionflag", category: "analysis")
 
     /// One continuous draft: from the first character to the field being emptied.
     private struct Session {

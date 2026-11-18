@@ -11,7 +11,7 @@ protocol StatusItemActions: AnyObject {
     func quit()
 }
 
-/// State behind the menu bar leaf (green / yellow / red while a draft is watched).
+/// State behind the menu bar pennant (green / yellow / red while watching).
 /// Rendered by the `MenuBarExtra` scene in `CooldownApp`.
 @MainActor
 final class StatusItemController: ObservableObject {
@@ -45,28 +45,45 @@ final class StatusItemController: ObservableObject {
     /// Template images follow the menu bar's own color; tinted ones must opt out
     /// of template rendering or the bar strips the color.
     var image: NSImage {
-        let (symbol, color): (String, NSColor?)
         if permissionMissing {
-            (symbol, color) = ("exclamationmark.triangle", nil)
-        } else if settings.suppressionReason != nil || settings.watchedApps.isEmpty {
+            let warning = NSImage(systemSymbolName: "exclamationmark.triangle",
+                                  accessibilityDescription: "Caution Flag needs permission") ?? NSImage()
+            warning.isTemplate = true
+            return warning
+        }
+        if settings.suppressionReason != nil || settings.watchedApps.isEmpty {
             // Off: a plain silhouette in the menu bar's own color.
-            (symbol, color) = ("leaf.fill", nil)
-        } else {
-            // On: always in color, so "watching" reads at a glance.
-            switch level {
-            case nil, .calm?: (symbol, color) = ("leaf.fill", .systemGreen)
-            case .warm?: (symbol, color) = ("leaf.fill", .systemYellow)
-            case .hot?: (symbol, color) = ("leaf.fill", .systemRed)
-            }
+            return Self.pennant(color: nil)
         }
-        let base = NSImage(systemSymbolName: symbol, accessibilityDescription: "Cool-Down") ?? NSImage()
-        guard let color else {
-            base.isTemplate = true
-            return base
+        // On: racing flag colors, so "watching" reads at a glance.
+        switch level {
+        case nil, .calm?: return Self.pennant(color: .systemGreen)
+        case .warm?: return Self.pennant(color: .systemYellow)
+        case .hot?: return Self.pennant(color: .systemRed)
         }
-        let tinted = base.withSymbolConfiguration(NSImage.SymbolConfiguration(paletteColors: [color])) ?? base
-        tinted.isTemplate = false
-        return tinted
+    }
+
+    /// The app icon's pennant, drawn at menu bar size (18 pt grid). Same
+    /// geometry as assets/icon/caution-flag.svg, scaled and centered.
+    static func pennant(color: NSColor?) -> NSImage {
+        let image = NSImage(size: NSSize(width: 18, height: 18), flipped: true) { _ in
+            (color ?? .black).setFill()
+            NSBezierPath(roundedRect: NSRect(x: 4, y: 1.5, width: 1.8, height: 15), xRadius: 0.9, yRadius: 0.9).fill()
+            let flag = NSBezierPath()
+            flag.move(to: NSPoint(x: 5.8, y: 2.6))
+            flag.line(to: NSPoint(x: 14.6, y: 6.6))
+            flag.line(to: NSPoint(x: 5.8, y: 10.6))
+            flag.close()
+            flag.lineJoinStyle = .round
+            flag.lineWidth = 1.2
+            (color ?? .black).setStroke()
+            flag.fill()
+            flag.stroke()
+            return true
+        }
+        image.isTemplate = color == nil
+        image.accessibilityDescription = "Caution Flag"
+        return image
     }
 }
 
@@ -96,7 +113,7 @@ struct StatusMenu: View {
             Button("Allow in Login Items…") { login.openLoginItemsSettings() }
         }
         Divider()
-        Button("Quit Cool-Down") { status.actions?.quit() }
+        Button("Quit Caution Flag") { status.actions?.quit() }
             .keyboardShortcut("q")
     }
 }
