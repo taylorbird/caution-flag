@@ -7,6 +7,7 @@ import SwiftUI
 final class AppController {
     let settings = SettingsStore()
     let drafts = DraftStore()
+    let login = LaunchAtLogin()
     lazy var analyzers = AnalyzerProvider(settings: settings)
     let capture = TextCaptureService()
     let windows = WindowManager()
@@ -68,6 +69,7 @@ extension AppController: StatusItemActions {
             SettingsView()
                 .environmentObject(self.settings)
                 .environmentObject(self.analyzers)
+                .environmentObject(self.login)
         }
     }
 

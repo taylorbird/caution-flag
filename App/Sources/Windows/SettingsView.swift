@@ -1,6 +1,5 @@
 import AppKit
 import CooldownCore
-import ServiceManagement
 import SwiftUI
 
 struct SettingsView: View {
@@ -19,8 +18,7 @@ struct SettingsView: View {
 
 private struct GeneralSettings: View {
     @EnvironmentObject var settings: SettingsStore
-    @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
-    @State private var loginError: String?
+    @EnvironmentObject var login: LaunchAtLogin
 
     var body: some View {
         Form {
@@ -52,20 +50,25 @@ private struct GeneralSettings: View {
                 }
             }
             Section {
-                Toggle("Open at login", isOn: $launchAtLogin)
-                    .onChange(of: launchAtLogin) { _, on in
-                        do {
-                            if on { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() }
-                            loginError = nil
-                        } catch {
-                            loginError = error.localizedDescription
-                            launchAtLogin = SMAppService.mainApp.status == .enabled
-                        }
+                Toggle("Open at login", isOn: Binding(
+                    get: { login.isEnabled || login.needsApproval },
+                    set: { login.setEnabled($0) }
+                ))
+                if login.needsApproval {
+                    HStack {
+                        Text("macOS needs your OK in Login Items.")
+                            .font(.caption).foregroundStyle(.secondary)
+                        Spacer()
+                        Button("Open Login Items…") { login.openLoginItemsSettings() }
                     }
-                if let loginError { Text(loginError).font(.caption).foregroundStyle(.red) }
+                }
+                if let error = login.lastError {
+                    Text(error).font(.caption).foregroundStyle(.red)
+                }
             }
         }
         .formStyle(.grouped)
+        .onAppear { login.refresh() }
     }
 
     private func minutesBinding(_ keyPath: ReferenceWritableKeyPath<SettingsStore, Int>) -> Binding<Date> {
