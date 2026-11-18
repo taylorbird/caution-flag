@@ -46,7 +46,8 @@ fi
 if (( ! DRY )); then
   step "Setting version $VERSION"
   sed -i '' -E "s/^( *MARKETING_VERSION: ).*/\1\"$VERSION\"/" "$ROOT/project.yml"
-  git -C "$ROOT" commit -q -m "Release $TAG" -- project.yml
+  # Skip when a previous, failed run already committed this version.
+  git -C "$ROOT" diff --quiet -- project.yml || git -C "$ROOT" commit -q -m "Release $TAG" -- project.yml
 fi
 
 # --- Build, notarize, staple ----------------------------------------------
@@ -59,13 +60,16 @@ rm -f "$ZIP"
 ditto -c -k --sequesterRsrc --keepParent "$BUILT" "$ZIP"
 
 step "Notarizing (a few minutes)"
-xcrun notarytool submit "$ZIP" --keychain-profile notary --wait --timeout 30m | tee "$DIST/notary-$VERSION.log"
+xcrun notarytool submit "$ZIP" --keychain-profile notary --wait --timeout 30m > "$DIST/notary-$VERSION.log" 2>&1 || true
+cat "$DIST/notary-$VERSION.log"
 grep -q "status: Accepted" "$DIST/notary-$VERSION.log" || fail "notarization was not accepted; see $DIST/notary-$VERSION.log"
 
 step "Stapling"
 xcrun stapler staple "$BUILT"
-spctl --assess --type execute --verbose=2 "$BUILT" 2>&1 | tee /dev/stderr | grep -q "source=Notarized Developer ID" \
-  || fail "Gatekeeper does not accept the stapled app"
+# Capture first: grep -q on a live pipe can SIGPIPE tee and trip pipefail.
+ASSESS=$(spctl --assess --type execute --verbose=2 "$BUILT" 2>&1 || true)
+print -r -- "$ASSESS"
+[[ "$ASSESS" == *"source=Notarized Developer ID"* ]] || fail "Gatekeeper does not accept the stapled app"
 rm -f "$ZIP"
 ditto -c -k --sequesterRsrc --keepParent "$BUILT" "$ZIP"
 SHA=$(shasum -a 256 "$ZIP" | awk '{print $1}')
