@@ -58,3 +58,38 @@ public enum SampleMessages {
 
     public static var all: [SampleMessage] { calm + heatedObvious + heatedSubtle }
 }
+
+/// A run of quick messages, scored together the way the app scores a burst.
+/// Paraphrased: never paste real messages here (see constraints.md, Privacy).
+public struct SampleBurst: Sendable {
+    public let name: String
+    public let messages: [String]
+    /// True when the run, read together, should reach at least warm.
+    public let heated: Bool
+
+    public var combined: String { messages.joined(separator: "\n") }
+}
+
+public enum SampleBursts {
+    public static let all: [SampleBurst] = [
+        SampleBurst(name: "defensive rebuttal", messages: [
+            "honestly hard to say since nobody has sent us any of these data issues",
+            "which doesn't add up",
+            "are they even filing these as data accuracy problems?",
+            "because we have zero tickets 😞",
+            "and the part about quality just isn't true",
+        ], heated: true),
+        SampleBurst(name: "excited", messages: [
+            "omg yes",
+            "that demo was so good",
+            "can't believe it worked first try",
+            "drinks friday? 🎉",
+        ], heated: false),
+        SampleBurst(name: "status updates", messages: [
+            "pushed the fix",
+            "deploying now",
+            "should be live in 10 min",
+            "I'll ping you when it's done",
+        ], heated: false),
+    ]
+}

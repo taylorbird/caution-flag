@@ -59,6 +59,8 @@ final class SettingsStore: ObservableObject {
     @Published var snoozeUntil: Date? { didSet { defaults.set(snoozeUntil, forKey: Keys.snoozeUntil) } }
     @Published var personalNotes: String { didSet { defaults.set(personalNotes, forKey: Keys.notes) } }
     @Published var onboardingCompleted: Bool { didSet { defaults.set(onboardingCompleted, forKey: Keys.onboarded) } }
+    /// Score a quick run of sent messages together with the next draft.
+    @Published var noticeBursts: Bool { didSet { defaults.set(noticeBursts, forKey: Keys.noticeBursts) } }
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -74,6 +76,7 @@ final class SettingsStore: ObservableObject {
         snoozeUntil = defaults.object(forKey: Keys.snoozeUntil) as? Date
         personalNotes = defaults.string(forKey: Keys.notes) ?? ""
         onboardingCompleted = defaults.bool(forKey: Keys.onboarded)
+        noticeBursts = defaults.object(forKey: Keys.noticeBursts) as? Bool ?? true
     }
 
     var watchedBundleIDs: Set<String> { Set(watchedApps.map(\.bundleID)) }
@@ -118,5 +121,6 @@ final class SettingsStore: ObservableObject {
         static let snoozeUntil = "snoozeUntil"
         static let notes = "personalNotes"
         static let onboarded = "onboardingCompleted"
+        static let noticeBursts = "noticeBursts"
     }
 }

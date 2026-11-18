@@ -35,9 +35,12 @@ final class InterventionController {
 
     private var warmPhrases = PhraseRotator(Phrasings.warm)
     private var hotPhrases = PhraseRotator(Phrasings.hot)
+    private var burstWarmPhrases = PhraseRotator(Phrasings.burstWarm)
+    private var burstHotPhrases = PhraseRotator(Phrasings.burstHot)
 
     private var pill: FloatingPanel<PillView>?
     private var pillMessage: String?
+    private var pillIsBurst = false
     private var pillHideTask: Task<Void, Never>?
 
     private let panelModel = PanelModel()
@@ -61,11 +64,12 @@ final class InterventionController {
 
     // MARK: - Warm: pill
 
-    func showPill(for assessment: ToneAssessment, anchor axFrame: CGRect?) {
+    func showPill(for assessment: ToneAssessment, anchor axFrame: CGRect?, burst: Bool = false) {
         updateAnchor(axFrame)
         panel?.fadeOut()
-        if pill?.isVisible != true || pillMessage == nil {
-            pillMessage = warmPhrases.next()
+        if pill?.isVisible != true || pillMessage == nil || pillIsBurst != burst {
+            pillMessage = burst ? burstWarmPhrases.next() : warmPhrases.next()
+            pillIsBurst = burst
         }
         let view = PillView(
             message: pillMessage ?? Phrasings.warm[0],
@@ -93,14 +97,14 @@ final class InterventionController {
 
     // MARK: - Hot: panel
 
-    func showPanel(for assessment: ToneAssessment, anchor axFrame: CGRect?, notes: String) {
+    func showPanel(for assessment: ToneAssessment, anchor axFrame: CGRect?, notes: String, burst: Bool = false) {
         updateAnchor(axFrame)
         pillHideTask?.cancel()
         pill?.fadeOut()
 
         let isNew = panel?.isVisible != true
         if isNew {
-            panelModel.headline = hotPhrases.next()
+            panelModel.headline = burst ? burstHotPhrases.next() : hotPhrases.next()
             panelModel.saveState = .idle
             panelModel.copied = false
             panelModel.notedMisread = false

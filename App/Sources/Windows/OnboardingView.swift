@@ -31,7 +31,7 @@ struct OnboardingView: View {
 
     private var setup: some View {
         VStack(alignment: .leading, spacing: 18) {
-            Text("Caution Flag reads the draft you're typing in Slack, checks its tone with a model that runs on this Mac, and gently checks in when a message is running hot. **Nothing you type leaves your computer**, and nothing is saved unless you choose to save a draft.")
+            Text("Caution Flag reads the draft you're typing in Slack, checks its tone with a model that runs on this Mac, and gently checks in when a message is running hot. **Nothing you type leaves your computer**, and nothing is saved unless you click a button to save it.")
                 .fixedSize(horizontal: false, vertical: true)
 
             step(1, title: "Allow Accessibility access", done: trusted) {

@@ -18,6 +18,19 @@ public enum Phrasings {
         "Worth sitting with this one for a moment.",
     ]
 
+    /// For a run of quick messages that adds up to more than any one of them.
+    public static let burstWarm: [String] = [
+        "A few quick ones in a row. Want to gather it into one?",
+        "That's a fast run of messages. Pause and say it once?",
+        "Quick-fire messages can stack up. One message instead?",
+    ]
+
+    public static let burstHot: [String] = [
+        "These quick messages are adding up. Breathe before the next one?",
+        "A lot is landing fast here. Want a minute first?",
+        "That run of messages carries some heat together. Pause?",
+    ]
+
     public static func reason(for category: ToneCategory) -> String {
         switch category {
         case .calm: "Reads calm and clear."
