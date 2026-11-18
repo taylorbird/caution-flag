@@ -1,4 +1,4 @@
-name: Cooldown
+name: CautionFlag
 options:
   bundleIdPrefix: com.tbird
   deploymentTarget:
@@ -8,42 +8,57 @@ packages:
   CooldownCore:
     path: Packages/CooldownCore
 targets:
-  Cooldown:
+  CautionFlag:
     type: application
     platform: macOS
     sources:
       - path: App/Sources
+      # Icon Composer package; Xcode compiles it into Assets.car (Liquid Glass).
+      - path: assets/icon/AppIcon.icon
+        buildPhase: resources
     dependencies:
       - package: CooldownCore
         product: CooldownCore
     info:
       path: App/Info.plist
       properties:
-        CFBundleName: Cool-Down
-        CFBundleDisplayName: Cool-Down
-        CFBundleShortVersionString: "0.1.0"
-        CFBundleVersion: "1"
+        CFBundleName: Caution Flag
+        CFBundleDisplayName: Caution Flag
+        CFBundleIconName: AppIcon
+        CFBundleIconFile: AppIcon
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         LSMinimumSystemVersion: "15.0"
         LSUIElement: true
         LSApplicationCategoryType: public.app-category.productivity
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.tbird.cooldown
-        PRODUCT_NAME: Cooldown
+        PRODUCT_BUNDLE_IDENTIFIER: com.tbird.cautionflag
+        PRODUCT_NAME: Caution Flag
+        MARKETING_VERSION: "0.1.0"
+        # scripts/build.sh overrides this with the git commit count.
+        CURRENT_PROJECT_VERSION: "1"
         SWIFT_VERSION: "5.0"
         MACOSX_DEPLOYMENT_TARGET: "15.0"
-        # Stable signing identity so the Accessibility grant survives rebuilds.
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        # One stable Developer ID identity for every build, so the Accessibility
+        # grant survives rebuilds and releases can be notarized.
         CODE_SIGN_STYLE: Manual
-        CODE_SIGN_IDENTITY: "Apple Development"
+        CODE_SIGN_IDENTITY: "Developer ID Application"
         DEVELOPMENT_TEAM: UFCDGSKCXB
-        ENABLE_HARDENED_RUNTIME: NO
+        OTHER_CODE_SIGN_FLAGS: "--timestamp"
+        CODE_SIGN_INJECT_BASE_ENTITLEMENTS: NO
+        # Notarization requires the hardened runtime. AX reading and posting
+        # keystrokes need no runtime exceptions.
+        ENABLE_HARDENED_RUNTIME: YES
         # Accessibility APIs that read other apps are unavailable in the App Sandbox.
         ENABLE_APP_SANDBOX: NO
+        ENABLE_USER_SCRIPT_SANDBOXING: NO
         GENERATE_INFOPLIST_FILE: NO
 schemes:
-  Cooldown:
+  CautionFlag:
     build:
       targets:
-        Cooldown: all
+        CautionFlag: all
     run:
       config: Debug

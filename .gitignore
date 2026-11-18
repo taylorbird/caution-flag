@@ -1,5 +1,7 @@
 .build/
+dist/
 .swiftpm/
+CautionFlag.xcodeproj/
 Cooldown.xcodeproj/
 DerivedData/
 xcuserdata/

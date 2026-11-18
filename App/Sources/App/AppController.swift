@@ -65,7 +65,7 @@ final class AppController {
 
 extension AppController: StatusItemActions {
     func showSettings() {
-        windows.show(id: "settings", title: "Cool-Down Settings", size: CGSize(width: 560, height: 520)) {
+        windows.show(id: "settings", title: "Caution Flag Settings", size: CGSize(width: 560, height: 520)) {
             SettingsView()
                 .environmentObject(self.settings)
                 .environmentObject(self.analyzers)
@@ -74,7 +74,7 @@ extension AppController: StatusItemActions {
     }
 
     func showOnboarding() {
-        windows.show(id: "onboarding", title: "Welcome to Cool-Down", size: CGSize(width: 560, height: 600)) {
+        windows.show(id: "onboarding", title: "Welcome to Caution Flag", size: CGSize(width: 560, height: 760)) {
             OnboardingView(onDone: { [weak self] in
                 self?.settings.onboardingCompleted = true
                 self?.windows.close(id: "onboarding")

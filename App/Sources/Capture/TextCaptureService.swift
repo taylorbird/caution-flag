@@ -39,8 +39,8 @@ final class TextCaptureService: @unchecked Sendable {
         set { lock.withLock { _watched = newValue } }
     }
 
-    private let log = Logger(subsystem: "com.tbird.cooldown", category: "capture")
-    private let queue = DispatchQueue(label: "com.tbird.cooldown.capture", qos: .userInitiated)
+    private let log = Logger(subsystem: "com.tbird.cautionflag", category: "capture")
+    private let queue = DispatchQueue(label: "com.tbird.cautionflag.capture", qos: .userInitiated)
     private let lock = NSLock()
     private var _watched: Set<String> = []
     private var front: (pid: pid_t, bundleID: String, name: String)?

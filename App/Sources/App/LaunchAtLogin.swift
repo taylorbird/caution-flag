@@ -10,7 +10,7 @@ final class LaunchAtLogin: ObservableObject {
     @Published private(set) var status: SMAppService.Status = .notRegistered
     @Published private(set) var lastError: String?
 
-    private let log = Logger(subsystem: "com.tbird.cooldown", category: "login")
+    private let log = Logger(subsystem: "com.tbird.cautionflag", category: "login")
     private var service: SMAppService { .mainApp }
 
     init() { refresh() }
