@@ -11,7 +11,7 @@ Requires macOS 15+. Apple's on-device model needs macOS 26+ with Apple Intellige
 
 ```sh
 brew install xcodegen          # once
-scripts/build.sh --run         # builds Release, installs to ~/Applications/Cooldown.app, launches it
+scripts/build.sh --run         # builds Release, installs to /Applications/Cooldown.app, launches it
 ```
 
 The project is generated from `project.yml`, so don't edit `Cooldown.xcodeproj` by hand. It's signed with your Apple Development identity (team `UFCDGSKCXB`) so the Accessibility grant survives rebuilds. With ad-hoc signing, macOS would forget the grant every build.
@@ -26,7 +26,7 @@ swift run  --package-path Packages/CooldownCore cooldown-harness --ollama --mode
 swift run  --package-path Packages/CooldownCore cooldown-harness --apple --text "per my last message…"
 ```
 
-To check the panels without Slack: `~/Applications/Cooldown.app/Contents/MacOS/Cooldown -demo hot` (or `warm`, `breathing`, `onboarding`, `settings`).
+To check the panels without Slack: `/Applications/Cooldown.app/Contents/MacOS/Cooldown -demo hot` (or `warm`, `breathing`, `onboarding`, `settings`).
 
 ## Permissions
 
@@ -36,7 +36,7 @@ Cool-Down needs **Accessibility** access so it can read the focused text field i
 2. Find **Cooldown** in System Settings › Privacy & Security › Accessibility and switch it on.
 3. The guide's checkmark turns green within a second.
 
-If it's switched on but not detected (usually after moving or re-signing the app), remove it with **–**, then add `~/Applications/Cooldown.app` again.
+If it's switched on but not detected (usually after moving or re-signing the app), remove it with **–**, then add `/Applications/Cooldown.app` again.
 
 Slack is an Electron app, so Cool-Down sets `AXManualAccessibility` on it to make Chromium expose its accessibility tree. To find the composer, it tries the app's focused element, then the system-wide one, then descendants of a focused wrapper group, then the last composer it found. As a last resort, and at most once every 2 s, it does a bounded search of the window. Password and secure fields are skipped.
 

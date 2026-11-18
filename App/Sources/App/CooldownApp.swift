@@ -8,7 +8,8 @@ struct CooldownApp: App {
 
     var body: some Scene {
         MenuBarExtra {
-            StatusMenu(status: delegate.controller.statusItem, analyzers: delegate.controller.analyzers)
+            StatusMenu(status: delegate.controller.statusItem, analyzers: delegate.controller.analyzers,
+                       login: delegate.controller.login)
         } label: {
             MenuBarLabel(status: delegate.controller.statusItem)
         }

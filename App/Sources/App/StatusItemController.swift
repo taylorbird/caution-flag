@@ -48,12 +48,13 @@ final class StatusItemController: ObservableObject {
         let (symbol, color): (String, NSColor?)
         if permissionMissing {
             (symbol, color) = ("exclamationmark.triangle", nil)
-        } else if settings.suppressionReason != nil {
-            (symbol, color) = ("moon.zzz", nil)
+        } else if settings.suppressionReason != nil || settings.watchedApps.isEmpty {
+            // Off: a plain silhouette in the menu bar's own color.
+            (symbol, color) = ("leaf.fill", nil)
         } else {
+            // On: always in color, so "watching" reads at a glance.
             switch level {
-            case nil: (symbol, color) = ("leaf", nil)
-            case .calm?: (symbol, color) = ("leaf.fill", .systemGreen)
+            case nil, .calm?: (symbol, color) = ("leaf.fill", .systemGreen)
             case .warm?: (symbol, color) = ("leaf.fill", .systemYellow)
             case .hot?: (symbol, color) = ("leaf.fill", .systemRed)
             }
@@ -72,6 +73,7 @@ final class StatusItemController: ObservableObject {
 struct StatusMenu: View {
     @ObservedObject var status: StatusItemController
     @ObservedObject var analyzers: AnalyzerProvider
+    @ObservedObject var login: LaunchAtLogin
 
     var body: some View {
         Text(status.headline)
@@ -85,6 +87,14 @@ struct StatusMenu: View {
         Button("Settings…") { status.actions?.showSettings() }
             .keyboardShortcut(",")
         Button("Setup Guide…") { status.actions?.showOnboarding() }
+        Divider()
+        Toggle("Open at Login", isOn: Binding(
+            get: { login.isEnabled || login.needsApproval },
+            set: { login.setEnabled($0) }
+        ))
+        if login.needsApproval {
+            Button("Allow in Login Items…") { login.openLoginItemsSettings() }
+        }
         Divider()
         Button("Quit Cool-Down") { status.actions?.quit() }
             .keyboardShortcut("q")

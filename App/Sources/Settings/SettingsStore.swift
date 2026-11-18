@@ -28,6 +28,7 @@ final class SettingsStore: ObservableObject {
     static let slack = WatchedApp(bundleID: "com.tinyspeck.slackmacgap", name: "Slack")
     static let suggestedApps: [WatchedApp] = [
         slack,
+        WatchedApp(bundleID: "dev.tbird.echo", name: "Echo"),
         WatchedApp(bundleID: "com.apple.mail", name: "Mail"),
         WatchedApp(bundleID: "com.apple.MobileSMS", name: "Messages"),
         WatchedApp(bundleID: "com.microsoft.teams2", name: "Microsoft Teams"),
