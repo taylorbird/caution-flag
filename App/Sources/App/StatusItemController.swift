@@ -7,6 +7,7 @@ protocol StatusItemActions: AnyObject {
     func showSettings()
     func showOnboarding()
     func showDrafts()
+    func showMisreads()
     func toggleSnooze()
     func quit()
 }
@@ -101,6 +102,7 @@ struct StatusMenu: View {
         }
         Button(status.isSnoozed ? "Resume Now" : "Snooze for 1 Hour") { status.actions?.toggleSnooze() }
         Button("Saved Drafts…") { status.actions?.showDrafts() }
+        Button("Not Heated Reports…") { status.actions?.showMisreads() }
         Button("Settings…") { status.actions?.showSettings() }
             .keyboardShortcut(",")
         Button("Setup Guide…") { status.actions?.showOnboarding() }

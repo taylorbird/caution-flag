@@ -13,6 +13,8 @@ struct PillView: View {
     let message: String
     let canExpand: Bool
     let onExpand: () -> Void
+    /// Nil hides the "Not heated" button (e.g. on the thank-you state).
+    let onNotHeated: (() -> Void)?
     let onClose: () -> Void
 
     var body: some View {
@@ -26,6 +28,13 @@ struct PillView: View {
                     .buttonStyle(.plain)
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(Palette.warm)
+            }
+            if let onNotHeated {
+                Button("Not heated", action: onNotHeated)
+                    .buttonStyle(.plain)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .help("This one's fine. Saves it on this Mac so the tuning can improve.")
             }
             Button(action: onClose) {
                 Image(systemName: "xmark")
@@ -53,6 +62,7 @@ struct HotPanelView: View {
     let onTakeFive: () -> Void
     let onSave: () -> Void
     let onClear: () -> Void
+    let onNotHeated: () -> Void
     let onDismiss: () -> Void
 
     var body: some View {
@@ -117,8 +127,14 @@ struct HotPanelView: View {
                 .background(Palette.breath.opacity(0.10), in: RoundedRectangle(cornerRadius: 10))
             }
 
-            switch model.saveState {
-            case .idle:
+            if model.notedMisread {
+                Text("Noted. Saved on this Mac for tuning, and nothing else changes.")
+                    .font(.system(size: 13))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                switch model.saveState {
+                case .idle:
                 HStack(spacing: 8) {
                     Button("Take 5", action: onTakeFive)
                         .buttonStyle(.borderedProminent)
@@ -128,6 +144,14 @@ struct HotPanelView: View {
                     Button("I'm fine, dismiss", action: onDismiss)
                         .buttonStyle(.plain)
                         .foregroundStyle(.secondary)
+                }
+                HStack {
+                    Spacer()
+                    Button("Not heated", action: onNotHeated)
+                        .buttonStyle(.plain)
+                        .font(.system(size: 12))
+                        .foregroundStyle(.tertiary)
+                        .help("Saves this draft on this Mac as a misread, for tuning later.")
                 }
             case .saved:
                 VStack(alignment: .leading, spacing: 8) {
@@ -143,6 +167,7 @@ struct HotPanelView: View {
                 Text("Cleared. It's waiting in Saved Drafts whenever you're ready.")
                     .font(.system(size: 13))
                     .foregroundStyle(.secondary)
+                }
             }
         }
         .padding(18)

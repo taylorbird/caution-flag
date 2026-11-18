@@ -7,8 +7,8 @@ struct SavedDraft: Codable, Identifiable, Equatable {
     var createdAt: Date
 }
 
-/// Drafts the user explicitly chose to save. This is the only place message text
-/// is ever written to disk, and only on that explicit action.
+/// Drafts the user explicitly chose to save. Message text reaches disk only on an
+/// explicit action: here ("Save draft") or `MisreadStore` ("Not heated").
 @MainActor
 final class DraftStore: ObservableObject {
     @Published private(set) var drafts: [SavedDraft] = []

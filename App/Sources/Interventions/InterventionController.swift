@@ -10,6 +10,8 @@ protocol InterventionActions: AnyObject {
     /// Returns true if something was saved.
     func saveDraft() -> Bool
     func clearComposer()
+    /// "Not heated": file the current draft as a misread. Returns true if something was saved.
+    func markNotHeated() -> Bool
 }
 
 /// Shared state for the larger panel so SwiftUI can update in place.
@@ -22,6 +24,7 @@ final class PanelModel: ObservableObject {
     @Published var saveState = SaveState.idle
     @Published var copied = false
     @Published var rewriteLoading = false
+    @Published var notedMisread = false
 }
 
 /// Owns the floating UI: the small "warm" pill, the larger "hot" panel, and the breathing timer.
@@ -68,6 +71,7 @@ final class InterventionController {
             message: pillMessage ?? Phrasings.warm[0],
             canExpand: true,
             onExpand: { [weak self] in self?.actions?.expandPill() },
+            onNotHeated: { [weak self] in self?.notHeatedFromPill() },
             onClose: { [weak self] in self?.actions?.dismissForThisDraft() }
         )
         if let pill {
@@ -99,6 +103,7 @@ final class InterventionController {
             panelModel.headline = hotPhrases.next()
             panelModel.saveState = .idle
             panelModel.copied = false
+            panelModel.notedMisread = false
         }
         // Keep a rewrite we already have if a re-score arrives without one.
         var assessment = assessment
@@ -119,6 +124,7 @@ final class InterventionController {
                     self?.panelModel.saveState = .cleared
                     self?.actions?.clearComposer()
                 },
+                onNotHeated: { [weak self] in self?.notHeatedFromPanel() },
                 onDismiss: { [weak self] in self?.actions?.dismissForThisDraft() }
             ))
         }
@@ -139,6 +145,31 @@ final class InterventionController {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
         panelModel.copied = true
+    }
+
+    // MARK: - Not heated
+
+    /// Files the draft, says thanks briefly, then gets out of the way.
+    private func notHeatedFromPill() {
+        guard actions?.markNotHeated() == true, let pill else { return }
+        pill.rootView = PillView(message: "Noted. Thanks.", canExpand: false,
+                                 onExpand: {}, onNotHeated: nil, onClose: { [weak self] in self?.pill?.fadeOut() })
+        hideSoon { [weak self] in self?.pill?.fadeOut() }
+    }
+
+    private func notHeatedFromPanel() {
+        guard actions?.markNotHeated() == true else { return }
+        panelModel.notedMisread = true
+        hideSoon { [weak self] in self?.panel?.fadeOut() }
+    }
+
+    private func hideSoon(_ hide: @escaping @MainActor () -> Void) {
+        pillHideTask?.cancel()
+        pillHideTask = Task {
+            try? await Task.sleep(for: .seconds(1.8))
+            guard !Task.isCancelled else { return }
+            hide()
+        }
     }
 
     // MARK: - Take 5

@@ -7,6 +7,7 @@ import SwiftUI
 final class AppController {
     let settings = SettingsStore()
     let drafts = DraftStore()
+    let misreads = MisreadStore()
     let login = LaunchAtLogin()
     lazy var analyzers = AnalyzerProvider(settings: settings)
     let capture = TextCaptureService()
@@ -15,7 +16,7 @@ final class AppController {
     lazy var statusItem = StatusItemController(settings: settings, analyzers: analyzers, actions: self)
     lazy var coordinator = DraftCoordinator(
         settings: settings, analyzers: analyzers, interventions: interventions,
-        status: statusItem, capture: capture, drafts: drafts
+        status: statusItem, capture: capture, drafts: drafts, misreads: misreads
     )
 
     private var refreshTimer: Timer?
@@ -87,6 +88,12 @@ extension AppController: StatusItemActions {
     func showDrafts() {
         windows.show(id: "drafts", title: "Saved Drafts", size: CGSize(width: 520, height: 440)) {
             DraftsView().environmentObject(self.drafts)
+        }
+    }
+
+    func showMisreads() {
+        windows.show(id: "misreads", title: "Not Heated", size: CGSize(width: 560, height: 480)) {
+            MisreadsView().environmentObject(self.misreads)
         }
     }
 
