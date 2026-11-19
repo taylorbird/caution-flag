@@ -4,6 +4,8 @@ A macOS menu bar app that notices when a Slack draft is running hot and gently c
 
 - **Warm (score 4–6):** the menu bar flag turns yellow and a small pill appears above the message box. It fades on its own.
 - **Hot (7+):** the flag turns red and a panel shows why, a calmer rewrite with a Copy button, your own note to yourself, and three choices: **Take 5** (a breathing timer), **Save draft for later**, or **I'm fine, dismiss**.
+- **Quick runs:** several short messages sent back to back are read together with the next draft, since a run of calm-looking one-liners can add up to a defensive reply. The nudge offers to gather them into one message.
+- **Not heated:** if a nudge misreads a message, tap **Not heated** to keep it for later tuning. It doesn't change how the app behaves.
 
 When Caution Flag is watching, the menu bar pennant is green; it turns yellow or red for heated drafts, like racing flags. A plain silhouette means it's off (snoozed, in quiet hours, or watching no apps).
 
@@ -92,7 +94,10 @@ Then go to Settings › Model › Ollama and click **Test connection**. The firs
 - Text is read only from apps you've switched on, and only while that app is in front.
 - Analysis runs on-device: Apple's model, or Ollama at a **loopback** address. `LoopbackGuard` rejects any other host in code, and that check is unit-tested.
 - Draft text lives in memory only. It isn't logged, persisted or sent anywhere. Logs (`log stream --predicate 'subsystem == "com.tbird.cautionflag"'`) contain scores and levels only.
-- The one exception: **Save draft for later** writes that draft to `~/Library/Application Support/Caution Flag/drafts.json` (mode 600). You can delete drafts from the menu bar › Saved Drafts.
+- Text reaches disk only when you click a button, and both files are mode 600:
+  - **Save draft for later** writes that draft to `~/Library/Application Support/Caution Flag/drafts.json`. Delete drafts from the menu bar › Saved Drafts.
+  - **Not heated** writes the flagged text and its scores to `~/Library/Application Support/Caution Flag/misreads.json`, for reviewing misreads when tuning. The app never changes its behavior because of these. Delete them from the menu bar › Not Heated Reports.
+- **Quick runs:** with "Notice quick runs of messages" on (Settings › General), the last few short messages you sent are kept in memory for up to three minutes, and for one minute after your last send, so the next draft can be read together with them. They are never written to disk or logged.
 - Settings (sensitivity, watched apps, quiet hours, your personal note) live in UserDefaults.
 
 ## Layout

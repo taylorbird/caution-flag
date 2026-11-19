@@ -14,6 +14,12 @@ final class DraftCoordinator {
     private let misreads: MisreadStore
     private let scorer = HeuristicScorer()
     private var heatTracker = RecentHeatTracker()
+    /// Recently sent messages, in memory only, for noticing quick runs.
+    private var bursts = BurstTracker()
+    private var burstPid: pid_t?
+    /// Whether the last change to the draft removed text (e.g. held Delete),
+    /// so emptying the field next is a deletion, not a send.
+    private var wasShrinking = false
     private let log = Logger(subsystem: "com.tbird.cautionflag", category: "analysis")
 
     /// One continuous draft: from the first character to the field being emptied.
@@ -25,6 +31,8 @@ final class DraftCoordinator {
         var lastAssessment: ToneAssessment?
         var rewriteRequestedFor: String?
         var nextLengthTrigger = DraftCoordinator.lengthStep
+        /// Earlier messages in a quick run, scored together with this draft.
+        var burstContext: [String]?
     }
 
     static let debounce: Duration = .milliseconds(800)
@@ -72,8 +80,12 @@ final class DraftCoordinator {
         status.permissionMissing = false
         let previous = latest
         latest = snapshot
+        let samePid = previous?.pid == snapshot.pid
+        let shrankBefore = wasShrinking
+        wasShrinking = samePid && snapshot.text.count < (previous?.text.count ?? 0)
 
         if settings.suppressionReason != nil {
+            bursts.reset()
             cancelWork()
             interventions.hideAll()
             status.level = nil
@@ -82,6 +94,11 @@ final class DraftCoordinator {
 
         let trimmed = snapshot.text.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.isEmpty {
+            // Text that vanishes in one step (not after a run of deletions) was sent.
+            if samePid, !shrankBefore, let previous,
+               previous.text.trimmingCharacters(in: .whitespacesAndNewlines).count >= 2 {
+                noteSend(previous.text, pid: snapshot.pid)
+            }
             endSession()
             return
         }
@@ -103,13 +120,42 @@ final class DraftCoordinator {
     }
 
     func refreshSuppression() {
+        // Runs every 30 s: let sent text age out of memory even if nothing else happens.
+        if settings.noticeBursts { _ = bursts.context() } else { bursts.reset() }
         analyzers.refresh()
         if settings.suppressionReason != nil {
+            bursts.reset()
             cancelWork()
             interventions.hideAll()
             status.level = nil
         }
         status.refresh()
+    }
+
+    // MARK: - Quick runs
+
+    private func noteSend(_ text: String, pid: pid_t) {
+        guard settings.noticeBursts else {
+            bursts.reset()
+            return
+        }
+        if burstPid != pid {
+            bursts.reset()
+            burstPid = pid
+        }
+        bursts.recordSend(text)
+        log.notice("send noticed length=\(text.count) runSends=\(self.bursts.sendCount)")
+    }
+
+    /// The earlier messages of a quick run in this app, if one is underway.
+    private func burstContext() -> [String]? {
+        guard settings.noticeBursts, let pid = session?.pid, pid == burstPid else { return nil }
+        return bursts.context()
+    }
+
+    /// What gets scored and rewritten: the draft alone, or the run plus the draft.
+    private func scoredText(for text: String) -> String {
+        session?.burstContext.map { BurstTracker.combined($0, draft: text) } ?? text
     }
 
     // MARK: - Analysis
@@ -135,11 +181,15 @@ final class DraftCoordinator {
         session?.lastAnalyzedText = text
         analysisTask?.cancel()
 
-        let report = scorer.evaluate(text)
+        session?.burstContext = burstContext()
+        let scored = scoredText(for: text)
+        let isBurst = session?.burstContext != nil
+        let report = scorer.evaluate(scored)
         let combiner = ScoreCombiner(sensitivity: settings.sensitivity)
         let recent = heatTracker.count()
 
-        guard !report.isObviouslyCalm, let analyzer = analyzers.currentAnalyzer() else {
+        // A run of short messages can each look obviously calm, so always ask the model.
+        guard isBurst || !report.isObviouslyCalm, let analyzer = analyzers.currentAnalyzer() else {
             apply(combiner.combine(model: nil, heuristic: report, recentHeatedDrafts: recent), text: text)
             return
         }
@@ -154,7 +204,7 @@ final class DraftCoordinator {
             var result: ToneResult?
             var declined = false
             do {
-                result = try await withTimeout(Self.modelTimeout) { try await analyzer.analyze(text) }
+                result = try await withTimeout(Self.modelTimeout) { try await analyzer.analyze(scored) }
                 self?.analyzers.noteSuccess()
             } catch ToneAnalyzerError.declined {
                 declined = true
@@ -175,7 +225,7 @@ final class DraftCoordinator {
     private func apply(_ assessment: ToneAssessment, text: String) {
         guard session != nil, let snapshot = latest else { return }
         // Scores and timing only; never the text.
-        log.notice("assessed score=\(assessment.score, format: .fixed(precision: 1)) level=\(assessment.level.rawValue)")
+        log.notice("assessed score=\(assessment.score, format: .fixed(precision: 1)) level=\(assessment.level.rawValue) runContext=\(self.session?.burstContext?.count ?? 0)")
         session?.lastAssessment = assessment
         status.level = assessment.level
 
@@ -192,11 +242,12 @@ final class DraftCoordinator {
             interventions.hideAll()
             return
         }
+        let burst = session.burstContext != nil
         switch assessment.level {
         case .warm:
-            interventions.showPill(for: assessment, anchor: snapshot.frame)
+            interventions.showPill(for: assessment, anchor: snapshot.frame, burst: burst)
         case .hot:
-            interventions.showPanel(for: assessment, anchor: snapshot.frame, notes: settings.personalNotes)
+            interventions.showPanel(for: assessment, anchor: snapshot.frame, notes: settings.personalNotes, burst: burst)
             fetchRewriteIfNeeded(for: snapshot.text)
         case .calm:
             break
@@ -205,11 +256,13 @@ final class DraftCoordinator {
 
     /// Rewrites are slower, so they're fetched only once the panel is up, then filled in place.
     private func fetchRewriteIfNeeded(for text: String) {
-        guard session?.rewriteRequestedFor != text, let analyzer = analyzers.currentAnalyzer() else { return }
-        session?.rewriteRequestedFor = text
+        // For a quick run, the calmer version gathers the whole run into one message.
+        let target = scoredText(for: text)
+        guard session?.rewriteRequestedFor != target, let analyzer = analyzers.currentAnalyzer() else { return }
+        session?.rewriteRequestedFor = target
         interventions.setRewriteLoading()
         Task { [weak self] in
-            let rewrite = try? await withTimeout(Self.modelTimeout) { try await analyzer.suggestRewrite(text) }
+            let rewrite = try? await withTimeout(Self.modelTimeout) { try await analyzer.suggestRewrite(target) }
             guard let self, self.latest?.text == text else { return }
             self.session?.lastAssessment?.rewrite = rewrite
             self.interventions.updateRewrite(rewrite)
@@ -237,7 +290,8 @@ extension DraftCoordinator: InterventionActions {
 
     func expandPill() {
         guard let assessment = session?.lastAssessment, let snapshot = latest else { return }
-        interventions.showPanel(for: assessment, anchor: snapshot.frame, notes: settings.personalNotes)
+        interventions.showPanel(for: assessment, anchor: snapshot.frame, notes: settings.personalNotes,
+                                burst: session?.burstContext != nil)
         fetchRewriteIfNeeded(for: snapshot.text)
     }
 
@@ -255,8 +309,8 @@ extension DraftCoordinator: InterventionActions {
 
     func markNotHeated() -> Bool {
         guard let snapshot = latest, !snapshot.text.isEmpty, let assessment = session?.lastAssessment else { return false }
-        misreads.record(text: snapshot.text, appName: snapshot.appName, assessment: assessment,
-                        sensitivity: settings.sensitivity)
+        misreads.record(text: scoredText(for: snapshot.text), appName: snapshot.appName, assessment: assessment,
+                        sensitivity: settings.sensitivity, burst: session?.burstContext != nil)
         // Quiet for the rest of this draft, but the controller hides the UI after a brief thanks.
         session?.dismissed = true
         log.notice("misread filed score=\(assessment.score, format: .fixed(precision: 1)) level=\(assessment.level.rawValue)")

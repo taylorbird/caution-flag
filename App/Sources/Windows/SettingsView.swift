@@ -34,6 +34,11 @@ private struct GeneralSettings: View {
                     Text("Higher means Caution Flag speaks up sooner. It also gets a little more watchful on its own after a few heated drafts in a row.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
+                VStack(alignment: .leading) {
+                    Toggle("Notice quick runs of messages", isOn: $settings.noticeBursts)
+                    Text("Several short messages sent back to back can add up to more than any one of them. Caution Flag keeps the last few in memory for a couple of minutes, never on disk, and reads them together with your next draft.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
             }
             Section {
                 HStack {
@@ -210,7 +215,8 @@ private struct PrivacySettings: View {
                 bullet("Password and other secure fields are skipped entirely.")
                 bullet("Analysis runs on this Mac: Apple's on-device model, or an Ollama server at a localhost address. Any other address is refused in code.")
                 bullet("Draft text lives in memory only. It is never logged, never written to disk, and never sent over the network.")
-                bullet("The one exception: when you click \"Save draft for later\", that draft is written to ~/Library/Application Support/Caution Flag/drafts.json (readable only by you). Delete drafts any time from Saved Drafts.")
+                bullet("Text reaches disk only when you click a button. \"Save draft for later\" writes to drafts.json, and \"Not heated\" writes the flagged text and its scores to misreads.json, both in ~/Library/Application Support/Caution Flag/ and readable only by you. Delete either from the menu.")
+                bullet("With \"Notice quick runs of messages\" on, your last few short sent messages stay in memory for a few minutes so the next draft can be read with them. They're never written to disk.")
                 bullet("Diagnostic logs contain scores and levels, never text.")
             }
             .frame(maxWidth: .infinity, alignment: .leading)

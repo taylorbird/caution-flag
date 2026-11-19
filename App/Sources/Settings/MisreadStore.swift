@@ -17,6 +17,8 @@ struct MisreadReport: Codable, Identifiable, Equatable {
     var source: String
     /// The Sensitivity setting at the time, since it shifts the combined score.
     var sensitivity: Double
+    /// True when the text is a quick run of messages scored together (one per line).
+    var burst: Bool? = nil
 }
 
 /// Reports the owner explicitly filed with "Not heated". Like `DraftStore`, text is
@@ -39,7 +41,7 @@ final class MisreadStore: ObservableObject {
         }
     }
 
-    func record(text: String, appName: String, assessment: ToneAssessment, sensitivity: Double) {
+    func record(text: String, appName: String, assessment: ToneAssessment, sensitivity: Double, burst: Bool) {
         let source: String = switch assessment.source {
         case .heuristicsOnly: "heuristics"
         case .model(let name): "model:\(name)"
@@ -53,7 +55,7 @@ final class MisreadStore: ObservableObject {
         reports.insert(MisreadReport(
             text: text, appName: appName, createdAt: Date(),
             score: assessment.score, level: level, category: assessment.category.rawValue,
-            reason: assessment.reason, source: source, sensitivity: sensitivity
+            reason: assessment.reason, source: source, sensitivity: sensitivity, burst: burst
         ), at: 0)
         persist()
     }

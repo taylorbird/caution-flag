@@ -8,6 +8,7 @@ import Foundation
 //   swift run cooldown-harness --apple             # + Apple on-device model
 //   swift run cooldown-harness --ollama [--model qwen2.5:3b]
 //   swift run cooldown-harness --apple --text "per my last message..."
+//   swift run cooldown-harness --apple --bursts    # quick-fire runs, scored together
 
 var args = Array(CommandLine.arguments.dropFirst())
 func flag(_ name: String) -> Bool {
@@ -37,7 +38,15 @@ if useApple {
 
 let scorer = HeuristicScorer()
 let combiner = ScoreCombiner(sensitivity: sensitivity)
-let samples: [SampleMessage] = customText.map { [SampleMessage(text: $0, expectation: .heatedSubtle)] } ?? SampleMessages.all
+let burstMode = flag("--bursts")
+let samples: [SampleMessage] = if let customText {
+    [SampleMessage(text: customText, expectation: .heatedSubtle)]
+} else if burstMode {
+    // Each burst is scored as one combined text, as the app does.
+    SampleBursts.all.map { SampleMessage(text: $0.combined, expectation: $0.heated ? .heatedSubtle : .calm) }
+} else {
+    SampleMessages.all
+}
 
 func label(_ e: SampleMessage.Expectation) -> String {
     switch e {
@@ -58,7 +67,7 @@ for sample in samples {
     var model: ToneResult?
     var declined = false
     var elapsed = ""
-    if let analyzer, !report.isObviouslyCalm {
+    if let analyzer, !report.isObviouslyCalm || burstMode {
         let start = Date()
         do { model = try await withTimeout(30) { try await analyzer.analyze(sample.text) } }
         catch ToneAnalyzerError.declined { declined = true }

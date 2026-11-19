@@ -31,7 +31,7 @@ struct MisreadsView: View {
                                     .controlSize(.small)
                             }
                             Text(report.text).textSelection(.enabled).font(.body)
-                            Text("\(report.level.capitalized) · \(String(format: "%.1f", report.score)) · \(report.category) · \(report.source)")
+                            Text("\(report.level.capitalized) · \(String(format: "%.1f", report.score)) · \(report.category) · \(report.source)\(report.burst == true ? " · quick run" : "")")
                                 .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
                             Text(report.reason).font(.caption).foregroundStyle(.secondary)
                         }
