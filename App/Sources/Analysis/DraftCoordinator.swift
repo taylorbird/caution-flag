@@ -181,7 +181,10 @@ final class DraftCoordinator {
         session?.lastAnalyzedText = text
         analysisTask?.cancel()
 
-        session?.burstContext = burstContext()
+        // Read first: assigning through `session?.` while burstContext() reads `session`
+        // is an exclusivity conflict, which aborts the app.
+        let context = burstContext()
+        session?.burstContext = context
         let scored = scoredText(for: text)
         let isBurst = session?.burstContext != nil
         let report = scorer.evaluate(scored)

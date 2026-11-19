@@ -4,10 +4,10 @@ import SwiftUI
 /// A borderless, non-activating panel: it floats over Slack and takes clicks
 /// without stealing focus from the composer.
 final class FloatingPanel<Content: View>: NSPanel {
-    private let hosting: NSHostingController<Content>
+    private let hosting: NSHostingController<WholePointSized<Content>>
 
     init(rootView: Content) {
-        hosting = NSHostingController(rootView: rootView)
+        hosting = NSHostingController(rootView: WholePointSized(content: rootView))
         hosting.sizingOptions = [.preferredContentSize]
         super.init(contentRect: .zero, styleMask: [.nonactivatingPanel, .borderless], backing: .buffered, defer: true)
         contentViewController = hosting
@@ -24,8 +24,8 @@ final class FloatingPanel<Content: View>: NSPanel {
     }
 
     var rootView: Content {
-        get { hosting.rootView }
-        set { hosting.rootView = newValue }
+        get { hosting.rootView.content }
+        set { hosting.rootView = WholePointSized(content: newValue) }
     }
 
     override var canBecomeKey: Bool { true }
@@ -84,5 +84,31 @@ final class FloatingPanel<Content: View>: NSPanel {
                 self.orderOut(nil)
             }
         })
+    }
+}
+
+/// Rounds the content's size up to whole points.
+///
+/// With `.preferredContentSize`, SwiftUI resizes the window to the content's size, but
+/// windows snap to whole points: a 52.5 pt pill becomes 53 pt, SwiftUI asks for 52.5
+/// again, and the resize/layout cycle can recurse until the stack overflows (the
+/// 0.1.2 crash when the warm pill first appeared). Whole-point content ends the cycle.
+struct WholePointSized<Content: View>: View {
+    var content: Content
+
+    var body: some View {
+        WholePointLayout { content }
+    }
+}
+
+private struct WholePointLayout: Layout {
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let size = subviews.first?.sizeThatFits(proposal) ?? .zero
+        return CGSize(width: size.width.rounded(.up), height: size.height.rounded(.up))
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        subviews.first?.place(at: CGPoint(x: bounds.midX, y: bounds.midY), anchor: .center,
+                              proposal: ProposedViewSize(bounds.size))
     }
 }
