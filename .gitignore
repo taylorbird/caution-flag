@@ -8,5 +8,5 @@ xcuserdata/
 *.xcuserstate
 .DS_Store
 
-# Claude Code work state (uncomment to keep it out of git)
-# .claude/work/
+# Claude Code notes and work state stay on this Mac (the repo is public).
+.claude/
