@@ -11,50 +11,237 @@ enum Palette {
     static let asphalt = Color(red: 0x1F / 255, green: 0x2A / 255, blue: 0x36 / 255)
 }
 
-/// The small, unobtrusive "this is reading a little hot" nudge.
-struct PillView: View {
-    let message: String
-    let canExpand: Bool
-    let onExpand: () -> Void
-    /// Nil hides the "Not heated" button (e.g. on the thank-you state).
-    let onNotHeated: (() -> Void)?
+/// The small nudge, in the caution-tape look. Two styles share one window:
+/// - heads-up: low-key asphalt chip, a quiet outline. "Worth a reread", not an alarm.
+/// - warm: the same chip with a strip of hazard tape and a brighter edge.
+/// Why? is the most prominent control on both.
+struct NudgeView: View {
+    @ObservedObject var model: NudgeModel
+    let onWhy: () -> Void
+    let onSoften: () -> Void
+    let onNotHeated: () -> Void
+    let onJustThisOne: () -> Void
     let onClose: () -> Void
 
+    private var isWarm: Bool { model.style == .warm }
+    private static let corner: CGFloat = 14
+
     var body: some View {
-        HStack(spacing: 10) {
-            Circle().fill(Palette.warm).frame(width: 8, height: 8)
-            Text(message)
-                .font(.system(size: 13, weight: .medium))
-                .fixedSize()
-            if canExpand {
-                Button("Why?", action: onExpand)
-                    .buttonStyle(.plain)
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(Palette.warm)
+        VStack(alignment: .leading, spacing: 0) {
+            if model.notedMisread {
+                Text("Noted. Thanks.")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(HotPanelView.ink)
+                    .padding(.vertical, 2)
+            } else {
+                row
+                if let count = model.runCount {
+                    RunNote(count: count, onJustThisOne: onJustThisOne)
+                        .padding(.top, 6)
+                }
+                if model.why != .idle {
+                    WhyCard(state: model.why, onNotHeated: onNotHeated)
+                        .frame(width: 380)
+                        .padding(.top, 10)
+                }
             }
-            if let onNotHeated {
+        }
+        .padding(.leading, isWarm ? 22 : 14)
+        .padding(.trailing, 8)
+        .padding(.vertical, 9)
+        .background(Palette.asphalt)
+        .overlay(alignment: .leading) {
+            if isWarm { HazardTape().frame(width: 8) }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: Self.corner))
+        .overlay(
+            RoundedRectangle(cornerRadius: Self.corner)
+                .strokeBorder(Palette.caution.opacity(isWarm ? 0.9 : 0.4), lineWidth: isWarm ? 1.5 : 1)
+        )
+        .padding(8)
+    }
+
+    private var row: some View {
+        HStack(spacing: 10) {
+            if !isWarm {
+                Circle()
+                    .strokeBorder(Palette.caution, lineWidth: 1.5)
+                    .background(Circle().fill(Palette.caution.opacity(0.35)).padding(3))
+                    .frame(width: 11, height: 11)
+            }
+            Text(model.message)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(HotPanelView.ink)
+                .fixedSize()
+            if model.why == .idle || isFailed {
+                WhyButton(action: onWhy)
+            }
+            if isWarm {
+                Button("Soften", action: onSoften)
+                    .buttonStyle(.plain)
+                    .font(.system(size: 12, weight: .bold, design: .rounded))
+                    .foregroundStyle(Palette.caution)
+                    .help("Open the full panel: a calmer version, Take 5, Save for later")
+            }
+            if model.why == .idle || isFailed {
                 Button("Not heated", action: onNotHeated)
                     .buttonStyle(.plain)
                     .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(HotPanelView.ink.opacity(0.5))
                     .help("This one's fine. Saves it on this Mac so the tuning can improve.")
             }
+            Spacer(minLength: 0)
             Button(action: onClose) {
                 Image(systemName: "xmark")
                     .font(.system(size: 10, weight: .bold))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(HotPanelView.ink.opacity(0.55))
                     .padding(4)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .help("Not this time")
         }
-        .padding(.leading, 14)
-        .padding(.trailing, 8)
-        .padding(.vertical, 9)
-        .background(.regularMaterial, in: Capsule())
-        .overlay(Capsule().strokeBorder(Palette.warm.opacity(0.45), lineWidth: 1))
-        .padding(8)
+    }
+
+    private var isFailed: Bool {
+        if case .failed = model.why { return true }
+        return false
+    }
+}
+
+/// Says plainly when a flag comes from a quick run of messages, not just this draft,
+/// and offers to judge this draft on its own.
+struct RunNote: View {
+    let count: Int
+    let onJustThisOne: () -> Void
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "text.bubble")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(Palette.caution.opacity(0.8))
+            Text("Read with your last \(count) message\(count == 1 ? "" : "s")")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(HotPanelView.ink.opacity(0.7))
+                .lineLimit(1)
+            Button("Just this one", action: onJustThisOne)
+                .buttonStyle(.plain)
+                .font(.system(size: 12, weight: .bold, design: .rounded))
+                .foregroundStyle(Palette.caution)
+                .fixedSize()
+                .help("Judge this draft on its own, without the messages you just sent.")
+            Spacer(minLength: 0)
+        }
+    }
+}
+
+/// The "Why?" control: filled caution yellow so it's the first thing the eye finds.
+struct WhyButton: View {
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Label("Why?", systemImage: "questionmark.bubble.fill")
+                .font(.system(size: 12, weight: .heavy, design: .rounded))
+                .foregroundStyle(Palette.asphalt)
+                .padding(.horizontal, 9)
+                .padding(.vertical, 4)
+                .background(Palette.caution, in: Capsule())
+                .contentShape(Capsule())
+                .fixedSize()
+        }
+        .buttonStyle(.plain)
+        .layoutPriority(1)
+        .help("Ask the on-device model what in the wording drove this. Nothing leaves this Mac.")
+    }
+}
+
+/// The on-demand explanation: the phrases that drove the rating, how they might land,
+/// and one small tweak. Shared by the nudge and the hot panel.
+struct WhyCard: View {
+    let state: WhyState
+    /// Nil hides the "Not heated" link (the hot panel has its own).
+    var onNotHeated: (() -> Void)?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            Text("WHY IT FLAGGED")
+                .font(.system(size: 10.5, weight: .heavy, design: .rounded))
+                .tracking(1.2)
+                .foregroundStyle(Palette.caution)
+            switch state {
+            case .idle:
+                EmptyView()
+            case .loading:
+                HStack(spacing: 8) {
+                    ProgressView().controlSize(.small).tint(Palette.caution)
+                    Text("Taking a closer look…")
+                        .font(.system(size: 12.5, weight: .medium))
+                        .foregroundStyle(HotPanelView.ink.opacity(0.65))
+                }
+            case .ready(let why):
+                if !why.phrases.isEmpty {
+                    VStack(alignment: .leading, spacing: 5) {
+                        ForEach(why.phrases, id: \.self) { phrase in
+                            Text("\u{201C}\(phrase)\u{201D}")
+                                .font(.system(size: 12.5, weight: .semibold))
+                                .foregroundStyle(Palette.caution)
+                                .padding(.horizontal, 7)
+                                .padding(.vertical, 3)
+                                .background(Palette.caution.opacity(0.13), in: RoundedRectangle(cornerRadius: 5))
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                }
+                Text(why.howItMightLand)
+                    .font(.system(size: 13))
+                    .foregroundStyle(HotPanelView.ink.opacity(0.9))
+                    .fixedSize(horizontal: false, vertical: true)
+                if !why.tryInstead.isEmpty {
+                    HStack(alignment: .firstTextBaseline, spacing: 7) {
+                        Text("TRY")
+                            .font(.system(size: 10, weight: .heavy, design: .rounded))
+                            .tracking(1)
+                            .foregroundStyle(Palette.asphalt)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 1.5)
+                            .background(Palette.caution, in: RoundedRectangle(cornerRadius: 4))
+                        Text(why.tryInstead)
+                            .font(.system(size: 13))
+                            .foregroundStyle(HotPanelView.ink)
+                            .textSelection(.enabled)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                footer
+            case .failed(let message):
+                Text(message)
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(HotPanelView.ink.opacity(0.75))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(.vertical, 11)
+        .padding(.horizontal, 13)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 10))
+    }
+
+    private var footer: some View {
+        HStack(spacing: 10) {
+            Text("A second look from the same local model. It can misread too.")
+                .font(.system(size: 11))
+                .foregroundStyle(HotPanelView.ink.opacity(0.45))
+                .fixedSize(horizontal: false, vertical: true)
+            if let onNotHeated {
+                Spacer(minLength: 4)
+                Button("Not heated", action: onNotHeated)
+                    .buttonStyle(.plain)
+                    .font(.system(size: 11.5, weight: .semibold))
+                    .foregroundStyle(HotPanelView.ink.opacity(0.6))
+                    .help("This one's fine. Saves it on this Mac so the tuning can improve.")
+            }
+        }
     }
 }
 
@@ -69,6 +256,8 @@ struct HotPanelView: View {
     let onSave: () -> Void
     let onClear: () -> Void
     let onNotHeated: () -> Void
+    let onWhy: () -> Void
+    let onJustThisOne: () -> Void
     let onDismiss: () -> Void
 
     static let ink = Color(red: 0.95, green: 0.93, blue: 0.88)
@@ -128,11 +317,23 @@ struct HotPanelView: View {
 
     private var content: some View {
         VStack(alignment: .leading, spacing: 14) {
+            if let count = model.runCount {
+                RunNote(count: count, onJustThisOne: onJustThisOne)
+            }
             if let assessment = model.assessment {
-                Text(assessment.reason)
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundStyle(Self.ink.opacity(0.85))
-                    .fixedSize(horizontal: false, vertical: true)
+                HStack(alignment: .firstTextBaseline, spacing: 10) {
+                    Text(assessment.reason)
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(Self.ink.opacity(0.85))
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    if model.why == .idle || isWhyFailed {
+                        WhyButton(action: onWhy)
+                    }
+                }
+                if model.why != .idle {
+                    WhyCard(state: model.why)
+                }
 
                 if assessment.rewrite == nil && model.rewriteLoading {
                     HStack(spacing: 8) {
@@ -230,6 +431,11 @@ struct HotPanelView: View {
                     .foregroundStyle(Self.ink.opacity(0.7))
             }
         }
+    }
+
+    private var isWhyFailed: Bool {
+        if case .failed = model.why { return true }
+        return false
     }
 
     private func card<Accessory: View, Content: View>(
@@ -388,13 +594,14 @@ struct TapeButtonStyle: ButtonStyle {
     }
 }
 
-/// "Take 5": a gentle breathing guide with a countdown.
+/// "Take 5": a gentle breathing guide with a countdown, in the caution-tape look.
 struct BreathingView: View {
     let endDate: Date
     let onDone: () -> Void
     private let start = Date()
     private static let inhale: Double = 4
     private static let exhale: Double = 6
+    private static let corner: CGFloat = 16
     // TimelineView never ticks in a non-activating panel of a never-active app;
     // a Timer publisher does.
     private let timer = Timer.publish(every: 1.0 / 30, on: .main, in: .common).autoconnect()
@@ -407,41 +614,65 @@ struct BreathingView: View {
 
     @ViewBuilder
     private func content(at date: Date) -> some View {
-            let elapsed = date.timeIntervalSince(start)
-            let remaining = max(0, endDate.timeIntervalSince(date))
-            let phase = elapsed.truncatingRemainder(dividingBy: Self.inhale + Self.exhale)
-            let inhaling = phase < Self.inhale
-            let t = inhaling ? phase / Self.inhale : 1 - (phase - Self.inhale) / Self.exhale
-            let eased = 0.5 - cos(t * .pi) / 2
+        let elapsed = date.timeIntervalSince(start)
+        let remaining = max(0, endDate.timeIntervalSince(date))
+        let phase = elapsed.truncatingRemainder(dividingBy: Self.inhale + Self.exhale)
+        let inhaling = phase < Self.inhale
+        let t = inhaling ? phase / Self.inhale : 1 - (phase - Self.inhale) / Self.exhale
+        let eased = 0.5 - cos(t * .pi) / 2
+        let done = remaining <= 0
 
-            VStack(spacing: 18) {
-                Text(remaining > 0 ? "Take five" : "Welcome back")
-                    .font(.system(size: 20, weight: .semibold))
+        VStack(spacing: 0) {
+            HStack(spacing: 10) {
+                Image(systemName: done ? "flag.checkered" : "stopwatch.fill")
+                    .font(.system(size: 18, weight: .bold))
+                Text(done ? "Welcome back" : "Take five")
+                    .font(.system(size: 20, weight: .heavy, design: .rounded))
+                Spacer(minLength: 0)
+                Text(done ? "" : Self.format(remaining))
+                    .font(.system(size: 16, weight: .heavy, design: .rounded).monospacedDigit())
+            }
+            .foregroundStyle(Palette.asphalt)
+            .padding(.horizontal, 20)
+            .padding(.vertical, 14)
+            .background(ZStack { Palette.caution; SpeedStripes(color: Palette.asphalt.opacity(0.06)) })
+            HazardTape().frame(height: 10)
+
+            VStack(spacing: 16) {
                 ZStack {
                     Circle()
-                        .fill(Palette.breath.opacity(0.15))
+                        .strokeBorder(Palette.caution.opacity(0.35), lineWidth: 2)
                         .frame(width: 170, height: 170)
                     Circle()
-                        .fill(Palette.breath.opacity(0.55))
+                        .fill(Palette.caution.opacity(done ? 0.25 : 0.85))
                         .frame(width: 170, height: 170)
-                        .scaleEffect(0.45 + 0.55 * eased)
-                    Text(remaining > 0 ? (inhaling ? "Breathe in" : "Breathe out") : "🌿")
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundStyle(.white)
+                        .scaleEffect(done ? 0.55 : 0.45 + 0.55 * eased)
+                    if done {
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 30, weight: .heavy))
+                            .foregroundStyle(Palette.caution)
+                    }
                 }
-                Text(remaining > 0 ? Self.format(remaining) : "How are you feeling about that message now?")
-                    .font(.system(size: 13).monospacedDigit())
-                    .foregroundStyle(.secondary)
+                .padding(.top, 6)
+                Text(done ? "How are you feeling about that message now?" : (inhaling ? "Breathe in" : "Breathe out"))
+                    .font(.system(size: 15, weight: .bold, design: .rounded))
+                    .foregroundStyle(HotPanelView.ink)
                     .multilineTextAlignment(.center)
                 Text("The message will be right where you left it.")
                     .font(.system(size: 12))
-                    .foregroundStyle(.tertiary)
-                Button(remaining > 0 ? "I'm back" : "Done", action: onDone)
+                    .foregroundStyle(HotPanelView.ink.opacity(0.5))
+                Button(done ? "Done" : "I'm back", action: onDone)
+                    .buttonStyle(TapeButtonStyle(kind: .primary))
             }
-            .padding(28)
-            .frame(width: 320)
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 20))
-            .padding(10)
+            .padding(.horizontal, 24)
+            .padding(.top, 18)
+            .padding(.bottom, 22)
+        }
+        .frame(width: 320)
+        .background(Palette.asphalt)
+        .clipShape(RoundedRectangle(cornerRadius: Self.corner))
+        .overlay(RoundedRectangle(cornerRadius: Self.corner).strokeBorder(Palette.caution.opacity(0.9), lineWidth: 2))
+        .padding(10)
     }
 
     private static func format(_ seconds: TimeInterval) -> String {

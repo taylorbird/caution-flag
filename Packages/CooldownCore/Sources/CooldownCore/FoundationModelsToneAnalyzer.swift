@@ -16,6 +16,19 @@ struct GeneratedScore {
     var reason: String
 }
 
+@available(macOS 26.0, *)
+@Generable
+struct GeneratedExplanation {
+    @Guide(description: "Up to 3 short phrases copied exactly from the draft that most likely drove the rating.", .maximumCount(3))
+    var phrases: [String]
+
+    @Guide(description: "One or two short, warm sentences on how those words could read to the recipient, addressed to the user as 'you'.")
+    var howItMightLand: String
+
+    @Guide(description: "One short, concrete wording tweak, or that it's probably fine as is.")
+    var tryInstead: String
+}
+
 /// Apple's on-device model (Apple Intelligence). Text never leaves the Mac.
 ///
 /// Speed: scoring asks only for heat/category/reason (the rewrite is most of the
@@ -99,6 +112,23 @@ public final class FoundationModelsToneAnalyzer: ToneAnalyzer, @unchecked Sendab
                 options: GenerationOptions(temperature: 0.4)
             )
             return TonePrompt.cleanRewrite(response.content)
+        } catch let error as LanguageModelSession.GenerationError {
+            throw Self.map(error)
+        }
+    }
+
+    public func explain(_ text: String, assessment: ToneAssessment) async throws -> ToneExplanation {
+        if let why = Self.unavailableReason { throw ToneAnalyzerError.unavailable(why) }
+        let session = LanguageModelSession(model: model, instructions: TonePrompt.explainInstructions)
+        do {
+            let response = try await session.respond(
+                to: TonePrompt.explainPrompt(for: text, assessment: assessment),
+                generating: GeneratedExplanation.self,
+                options: GenerationOptions(temperature: 0.3)
+            )
+            let g = response.content
+            return ToneExplanation(phrases: g.phrases, howItMightLand: g.howItMightLand,
+                                   tryInstead: g.tryInstead, draft: text)
         } catch let error as LanguageModelSession.GenerationError {
             throw Self.map(error)
         }

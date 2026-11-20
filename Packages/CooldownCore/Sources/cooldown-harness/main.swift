@@ -9,6 +9,7 @@ import Foundation
 //   swift run cooldown-harness --ollama [--model qwen2.5:3b]
 //   swift run cooldown-harness --apple --text "per my last message..."
 //   swift run cooldown-harness --apple --bursts    # quick-fire runs, scored together
+//   swift run cooldown-harness --apple --why --text "..."   # + the on-demand "Why?" answer
 
 var args = Array(CommandLine.arguments.dropFirst())
 func flag(_ name: String) -> Bool {
@@ -39,6 +40,7 @@ if useApple {
 let scorer = HeuristicScorer()
 let combiner = ScoreCombiner(sensitivity: sensitivity)
 let burstMode = flag("--bursts")
+let explainMode = flag("--why")
 let samples: [SampleMessage] = if let customText {
     [SampleMessage(text: customText, expectation: .heatedSubtle)]
 } else if burstMode {
@@ -76,13 +78,24 @@ for sample in samples {
     }
     let a = combiner.combine(model: model, modelName: analyzer?.displayName, modelDeclined: declined,
                              heuristic: report, recentHeatedDrafts: 0)
-    let level = switch a.level { case .calm: "🟢"; case .warm: "🟡"; case .hot: "🔴" }
+    let level = switch a.level { case .calm: "🟢"; case .headsUp: "🔆"; case .warm: "🟡"; case .hot: "🔴" }
     let expectedFlag = sample.expectation != .calm
     let ok = (a.level > .calm) == expectedFlag || (analyzer == nil && sample.expectation == .heatedSubtle)
     if !ok { mismatches += 1 }
     print("\(ok ? " " : "✗") \(label(sample.expectation)) \(level) \(String(format: "%4.1f", a.score)) h=\(String(format: "%.1f", report.score))\(model.map { String(format: " m=%.0f", $0.heat) } ?? "")\(declined ? " declined" : "")\(elapsed)  \(pad(sample.text, 60))")
     if let model, a.level > .calm {
         print("        \(a.category.displayName): \(model.reason)")
+    }
+    if let analyzer, explainMode, a.level > .calm {
+        let start = Date()
+        do {
+            let why = try await withTimeout(30) { try await analyzer.explain(sample.text, assessment: a) }
+            print(String(format: "        why (%.1fs): ", Date().timeIntervalSince(start)) + why.phrases.map { "\"\($0)\"" }.joined(separator: ", "))
+            print("          lands: \(why.howItMightLand)")
+            print("          try:   \(why.tryInstead)")
+        } catch {
+            print("        why: ! \(error)")
+        }
     }
     if let analyzer, a.level == .hot {
         let start = Date()

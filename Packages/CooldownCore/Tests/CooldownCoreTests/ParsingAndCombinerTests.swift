@@ -88,7 +88,7 @@ struct ScoreCombinerTests {
         let a = ScoreCombiner().combine(model: ToneResult(heat: 5, category: .frustrated, reason: "r"),
                                         heuristic: calmReport, recentHeatedDrafts: 0)
         #expect(a.score == 5)
-        #expect(a.level == .warm)
+        #expect(a.level == .headsUp)
         #expect(a.reason == "r")
     }
 
@@ -126,6 +126,7 @@ struct ScoreCombinerTests {
 
     @Test func modelDeclinedIsAtLeastWarm() {
         let a = ScoreCombiner().combine(model: nil, modelDeclined: true, heuristic: calmReport, recentHeatedDrafts: 0)
+        #expect(a.score == 6)
         #expect(a.level == .warm)
         #expect(a.rewrite == nil)
     }
@@ -141,7 +142,7 @@ struct ScoreCombinerTests {
         let a = ScoreCombiner().combine(model: ToneResult(heat: 1, category: .calm, reason: ""),
                                         heuristic: scorer.evaluate("Per my last message, as I already said, going forward"),
                                         recentHeatedDrafts: 0)
-        #expect(a.level == .warm)
+        #expect(a.level == .headsUp)
         #expect(a.category == .passiveAggressive)
     }
 

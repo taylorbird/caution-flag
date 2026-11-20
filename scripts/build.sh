@@ -23,8 +23,12 @@ for arg in "$@"; do
   esac
 done
 
-# Build number = commit count: monotonic, so newer builds always compare higher.
-BUILD_NUMBER=$(git -C "$ROOT" rev-list --count HEAD)
+# Build number = commit count + 100: monotonic, so newer builds always compare higher.
+# The offset exists because the 2026-11-19 history rewrite (public repo) reset the
+# count to ~20 while 0.1.3 had already shipped as build 26; Sparkle only offers a
+# higher build. Never lower it.
+BUILD_OFFSET=100
+BUILD_NUMBER=$(( $(git -C "$ROOT" rev-list --count HEAD) + BUILD_OFFSET ))
 
 xcodegen generate --spec "$ROOT/project.yml" --project "$ROOT" --quiet
 xcodebuild -project "$ROOT/CautionFlag.xcodeproj" -scheme CautionFlag -configuration Release \

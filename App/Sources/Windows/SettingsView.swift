@@ -20,6 +20,13 @@ private struct GeneralSettings: View {
     @EnvironmentObject var settings: SettingsStore
     @EnvironmentObject var login: LaunchAtLogin
 
+    /// Plain words for what the speed-check slider counts as a run.
+    static func speedCheckSummary(_ level: Double) -> String {
+        let t = BurstTracker.tuning(level: level)
+        let messages = t.minPriorSends + 1
+        return "Counts \(messages)+ messages in a row (including the one you're writing), each under \(t.maxLength) characters, sent within \(Int(t.maxGap)) s of each other."
+    }
+
     var body: some View {
         Form {
             Section {
@@ -36,7 +43,17 @@ private struct GeneralSettings: View {
                 }
                 VStack(alignment: .leading) {
                     Toggle("Notice quick runs of messages", isOn: $settings.noticeBursts)
-                    Text("Several short messages sent back to back can add up to more than any one of them. Caution Flag keeps the last few in memory for a couple of minutes, never on disk, and reads them together with your next draft.")
+                    Text("Several short messages sent back to back in the same conversation can add up to more than any one of them. Caution Flag keeps the last few in memory for a couple of minutes, never on disk, and reads them together with your next draft. It only says so when the run reads clearly hotter than the draft alone.")
+                        .font(.caption).foregroundStyle(.secondary)
+                    Slider(value: $settings.burstSensitivity, in: 1...5, step: 1) {
+                        Text("Speed check")
+                    } minimumValueLabel: {
+                        Text("Relaxed")
+                    } maximumValueLabel: {
+                        Text("Watchful")
+                    }
+                    .disabled(!settings.noticeBursts)
+                    Text(Self.speedCheckSummary(settings.burstSensitivity))
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 VStack(alignment: .leading) {

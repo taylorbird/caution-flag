@@ -31,28 +31,50 @@ final class FloatingPanel<Content: View>: NSPanel {
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
 
-    /// Places the panel just above `anchor` (Cocoa coordinates), or near the mouse.
-    func position(above anchor: CGRect?, alignment: HorizontalAlignment = .leading) {
+    enum Spot: String { case above, below, trailing, leading, corner }
+
+    /// Places the window next to the message box (`anchor`, Cocoa coordinates) without
+    /// ever covering it: above if there's room, else below, else beside it. An anchor
+    /// that can't be a message box (missing, or most of the screen tall, as some
+    /// Electron apps report) gets the screen's top-trailing corner instead.
+    @discardableResult
+    func place(near anchor: CGRect?) -> Spot {
         hosting.view.layoutSubtreeIfNeeded()
+        // fittingSize, not sizeThatFits(in: huge): flexible spacers would stretch to fill
+        // a huge proposal and every spot would look too small.
         let size = hosting.view.fittingSize
-        setContentSize(size)
+        let w = size.width.rounded(.up), h = size.height.rounded(.up)
+        setContentSize(CGSize(width: w, height: h))
 
-        let target = anchor ?? CGRect(origin: NSEvent.mouseLocation, size: .zero)
-        let screen = NSScreen.screens.first { $0.frame.intersects(target.insetBy(dx: -1, dy: -1)) } ?? NSScreen.main
+        let probe = anchor ?? CGRect(origin: NSEvent.mouseLocation, size: .zero)
+        let screen = NSScreen.screens.first { $0.frame.intersects(probe.insetBy(dx: -1, dy: -1)) } ?? NSScreen.main
         let visible = screen?.visibleFrame ?? CGRect(x: 0, y: 0, width: 1440, height: 900)
+        let corner = CGPoint(x: visible.maxX - w - 16, y: visible.maxY - h - 16)
 
-        var x: CGFloat
-        switch alignment {
-        case .trailing: x = target.maxX - size.width - 12
-        case .center: x = target.midX - size.width / 2
-        default: x = target.minX + 12
+        guard let a = anchor, a.height <= visible.height * 0.45 else {
+            setFrameOrigin(corner)
+            return .corner
         }
-        var y = target.maxY + 10
-        if y + size.height > visible.maxY { y = target.minY - size.height - 10 }
-
-        x = min(max(x, visible.minX + 8), visible.maxX - size.width - 8)
-        y = min(max(y, visible.minY + 8), visible.maxY - size.height - 8)
-        setFrameOrigin(CGPoint(x: x, y: y))
+        let gap: CGFloat = 10
+        let candidates: [(Spot, CGPoint)] = [
+            (.above, CGPoint(x: a.minX + 12, y: a.maxY + gap)),
+            (.below, CGPoint(x: a.minX + 12, y: a.minY - h - gap)),
+            (.trailing, CGPoint(x: a.maxX + gap, y: a.minY)),
+            (.leading, CGPoint(x: a.minX - w - gap, y: a.minY)),
+        ]
+        let box = a.insetBy(dx: -4, dy: -4)
+        for (spot, origin) in candidates {
+            // Only slide along the edge we're on; a spot that needs moving into the box fails.
+            let x = min(max(origin.x, visible.minX + 8), visible.maxX - w - 8)
+            let y = min(max(origin.y, visible.minY + 8), visible.maxY - h - 8)
+            let frame = CGRect(x: x, y: y, width: w, height: h)
+            if visible.contains(frame), !frame.intersects(box) {
+                setFrameOrigin(frame.origin)
+                return spot
+            }
+        }
+        setFrameOrigin(corner)
+        return .corner
     }
 
     func centerOnScreen(near anchor: CGRect?) {
