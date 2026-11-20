@@ -232,7 +232,9 @@ final class DraftCoordinator {
             apply(provisional, text: text)
         }
 
-        if analysisTask == nil {
+        // While Why? is asking the model, typing scores wait: Apple's model rejects a
+        // second request at once, which is what made Why? fail in 0.1.4.
+        if analysisTask == nil, explainTask == nil {
             startModelScore(text)
         } else {
             queuedText = text
@@ -283,8 +285,9 @@ final class DraftCoordinator {
             self.session?.runApplies = runApplies
             self.apply(assessment, text: text)
 
-            // Catch up to whatever was typed meanwhile.
-            if let next = self.queuedText {
+            // Catch up to whatever was typed meanwhile (unless Why? is now running;
+            // it picks the queue back up when it finishes).
+            if self.explainTask == nil, let next = self.queuedText {
                 self.queuedText = nil
                 if next != text { self.startModelScore(next) }
             }
@@ -303,6 +306,9 @@ final class DraftCoordinator {
             return nil
         } catch {
             analyzers.noteFailure(error)
+            // The error's kind only; never text.
+            let kind = (error as? ToneAnalyzerError)?.kind ?? "other"
+            log.notice("model failed kind=\(kind, privacy: .public)")
             return (nil, false)
         }
     }
@@ -428,29 +434,56 @@ extension DraftCoordinator: InterventionActions {
         let target = presentedText(for: snapshot.text)
         let sessionID = session.id
         interventions.setWhy(.loading)
+        let inFlight = analysisTask
         explainTask = Task { [weak self] in
             let clock = ContinuousClock()
             let started = clock.now
-            let state: WhyState
-            do {
-                let why = try await withTimeout(Self.modelTimeout) { try await analyzer.explain(target, assessment: assessment) }
-                state = .ready(why)
-            } catch is CancellationError {
-                return
-            } catch ToneAnalyzerError.declined {
-                state = .failed("Apple's on-device safety filter wouldn't look at this one. A single word can trip it, so it doesn't mean the draft is heated.")
-            } catch ToneAnalyzerError.timeout {
-                state = .failed("That took too long. Try Why? again in a moment.")
-            } catch {
-                state = .failed("Couldn't get a closer look just now. Try Why? again in a moment.")
+            // Let a typing score already in flight finish first; new ones wait for us.
+            await inFlight?.value
+            var state = WhyState.failed("Couldn't get a closer look just now. Try Why? again in a moment.")
+            var attempts = 0
+            retry: while attempts < 3 {
+                attempts += 1
+                do {
+                    let why = try await withTimeout(Self.modelTimeout) { try await analyzer.explain(target, assessment: assessment) }
+                    state = .ready(why)
+                    break retry
+                } catch ToneAnalyzerError.busy {
+                    // Busy or rate-limited: back off and try again.
+                    try? await Task.sleep(for: .milliseconds(700 * attempts))
+                    if Task.isCancelled { return }
+                    continue retry
+                } catch is CancellationError {
+                    return
+                } catch {
+                    state = Self.whyFailure(error)
+                    if let e = error as? ToneAnalyzerError { self?.log.notice("explain failed kind=\(e.kind, privacy: .public)") }
+                    break retry
+                }
             }
             guard !Task.isCancelled, let self else { return }
             self.explainTask = nil
             // Timing and outcome only; never the text or the explanation.
             let outcome = if case .ready = state { "ok" } else { "failed" }
-            self.log.notice("explained in \(Int((clock.now - started) / .milliseconds(1))) ms outcome=\(outcome, privacy: .public)")
+            self.log.notice("explained in \(Int((clock.now - started) / .milliseconds(1))) ms outcome=\(outcome, privacy: .public) attempts=\(attempts)")
+            // Scores that waited while Why? ran pick up now.
+            if self.analysisTask == nil, let next = self.queuedText {
+                self.queuedText = nil
+                self.startModelScore(next)
+            }
             guard self.session?.id == sessionID else { return }
             self.interventions.setWhy(state)
+        }
+    }
+
+    private static func whyFailure(_ error: Error) -> WhyState {
+        switch error {
+        case ToneAnalyzerError.declined:
+            .failed("Apple's on-device safety filter wouldn't look at this one. A single word can trip it, so it doesn't mean the draft is heated.")
+        case ToneAnalyzerError.timeout:
+            .failed("That took too long. Try Why? again in a moment.")
+        default:
+            .failed("Couldn't get a closer look just now. Try Why? again in a moment.")
         }
     }
 

@@ -1,8 +1,20 @@
 #!/bin/zsh
-# Generates the Xcode project, builds Release, and installs to /Applications.
-# Usage: scripts/build.sh [--run] [--no-install]
-#   --run         launch the installed app
-#   --no-install  build only; the app is at $DERIVED/Build/Products/Release
+# Generates the Xcode project and builds, in one of two identities (same pattern
+# as Space Manager):
+#
+#   scripts/build.sh              DEV: "Caution Flag Dev.app", bundle ID
+#                                 com.tbird.cautionflag.dev, no update feed. Quits
+#                                 the live app (only one runs at a time, or both
+#                                 would nudge the same draft), installs to
+#                                 /Applications, launches. scripts/use-live.sh
+#                                 switches back.
+#   scripts/build.sh --release    LIVE: "Caution Flag.app", com.tbird.cautionflag,
+#                                 Sparkle feed. Builds only; release.sh ships it.
+#   --no-install                  DEV build without installing or launching.
+#
+# The two bundle IDs keep settings (UserDefaults) and the Accessibility grant
+# separate. Both share ~/Library/Application Support/Caution Flag/ (drafts and
+# Not heated reports), so reports from either land in one file.
 #
 # Install location matters: on macOS 27 status items are hosted by MenuBarAgent,
 # and an app run from anywhere but /Applications gets an item Bartender can't
@@ -10,18 +22,25 @@
 set -euo pipefail
 ROOT="${0:A:h:h}"
 DERIVED="$ROOT/.build/xcode"
-NAME="Caution Flag"
-APP="/Applications/$NAME.app"
-BUILT="$DERIVED/Build/Products/Release/$NAME.app"
+LIVE_NAME="Caution Flag"
+LIVE_ID="com.tbird.cautionflag"
 IDENTITY="Developer ID Application: Taylor Bird (UFCDGSKCXB)"
-RUN=0 INSTALL=1
+RELEASE=0 INSTALL=1
 for arg in "$@"; do
   case "$arg" in
-    --run) RUN=1 ;;
+    --release) RELEASE=1; INSTALL=0 ;;
     --no-install) INSTALL=0 ;;
+    --run) ;; # old flag: dev builds always launch now
     *) echo "unknown option: $arg" >&2; exit 2 ;;
   esac
 done
+if (( RELEASE )); then
+  NAME="$LIVE_NAME"; BUNDLE_ID="$LIVE_ID"
+else
+  NAME="$LIVE_NAME Dev"; BUNDLE_ID="$LIVE_ID.dev"
+fi
+APP="/Applications/$NAME.app"
+BUILT="$DERIVED/Build/Products/Release/$NAME.app"
 
 # Build number = commit count + 100: monotonic, so newer builds always compare higher.
 # The offset exists because the 2026-11-19 history rewrite (public repo) reset the
@@ -33,7 +52,19 @@ BUILD_NUMBER=$(( $(git -C "$ROOT" rev-list --count HEAD) + BUILD_OFFSET ))
 xcodegen generate --spec "$ROOT/project.yml" --project "$ROOT" --quiet
 xcodebuild -project "$ROOT/CautionFlag.xcodeproj" -scheme CautionFlag -configuration Release \
   -derivedDataPath "$DERIVED" -destination 'generic/platform=macOS' -quiet \
-  CURRENT_PROJECT_VERSION="$BUILD_NUMBER" ${MARKETING_VERSION:+MARKETING_VERSION=$MARKETING_VERSION} build
+  CURRENT_PROJECT_VERSION="$BUILD_NUMBER" ${MARKETING_VERSION:+MARKETING_VERSION=$MARKETING_VERSION} \
+  CF_APP_NAME="$NAME" CF_BUNDLE_ID="$BUNDLE_ID" build
+
+# A dev build must never update itself into the live release: drop the feed keys.
+if (( ! RELEASE )); then
+  for key in SUFeedURL SUPublicEDKey SUEnableAutomaticChecks; do
+    /usr/libexec/PlistBuddy -c "Delete :$key" "$BUILT/Contents/Info.plist" 2>/dev/null || true
+  done
+  for key in CFBundleDisplayName CFBundleName; do
+    /usr/libexec/PlistBuddy -c "Set :$key $NAME" "$BUILT/Contents/Info.plist" 2>/dev/null \
+      || /usr/libexec/PlistBuddy -c "Add :$key string $NAME" "$BUILT/Contents/Info.plist"
+  done
+fi
 
 # actool's AppIcon.icns stops at 256 px, and launchers that read the .icns
 # (Monarch) show a blank icon at larger sizes. Replace it with a full 16–1024
@@ -59,7 +90,16 @@ codesign --verify --strict --deep "$BUILT"
 
 (( INSTALL )) || { echo "Built $BUILT"; exit 0; }
 
-pkill -x "$NAME" 2>/dev/null || true
+# Quit live and any older dev copy: only one Caution Flag watches drafts at a time.
+for id in "$LIVE_ID" "$LIVE_ID.dev"; do
+  osascript -e "quit app id \"$id\"" 2>/dev/null || true
+done
+for _ in {1..50}; do
+  pgrep -xq "$LIVE_NAME" || pgrep -xq "$LIVE_NAME Dev" || break
+  sleep 0.1
+done
+pkill -x "$LIVE_NAME" 2>/dev/null || true
+pkill -x "$LIVE_NAME Dev" 2>/dev/null || true
 pkill -x Cooldown 2>/dev/null || true
 # Earlier builds were named Cooldown; a second copy confuses Launch Services,
 # login items, and the Accessibility list.
@@ -67,6 +107,10 @@ rm -rf "/Applications/Cooldown.app" "$HOME/Applications/Cooldown.app"
 rm -rf "$APP"
 ditto "$BUILT" "$APP"
 echo "Installed $APP (build $BUILD_NUMBER)"
-
-(( RUN )) && open "$APP"
+# First dev run: start from the live settings (watched apps, sensitivity, ...).
+if ! defaults read "$BUNDLE_ID" onboardingCompleted >/dev/null 2>&1; then
+  defaults export "$LIVE_ID" - | defaults import "$BUNDLE_ID" - && echo "Copied live settings to $BUNDLE_ID"
+fi
+open "$APP"
+echo "Running $NAME. Switch back with scripts/use-live.sh"
 exit 0
