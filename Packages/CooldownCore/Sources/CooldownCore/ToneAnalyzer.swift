@@ -39,13 +39,12 @@ public enum ToneAnalyzerError: Error, Equatable, CustomStringConvertible {
         }
     }
 
-    /// A short label safe for logs: the error's kind, never any text it carries
-    /// beyond a framework case name.
+    /// A short label safe for logs: the error's kind, never any text it carries.
     public var kind: String {
         switch self {
         case .unavailable: "unavailable"
         case .declined: "declined"
-        case .badResponse(let why): "bad:" + why.prefix { $0 != "(" && $0 != ":" && $0 != " " }
+        case .badResponse: "bad"
         case .timeout: "timeout"
         case .notLoopback: "notLoopback"
         case .busy: "busy"

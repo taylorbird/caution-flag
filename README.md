@@ -8,14 +8,14 @@
 
 It watches the message box in Slack and other apps you choose, rates the tone as you type, and steps in when a draft is heated.
 
-- **Heads-up (score 4–5):** the menu bar flag turns yellow and a quiet chip above the message box says the draft might be worth a reread. It fades after a few seconds.
+- **Heads-up (score 4–5):** the menu bar flag turns blue (a racing blue flag: information, not a hazard) and a quiet blue chip above the message box says the draft might be worth a reread. It fades after a few seconds.
 - **Warm (score 6):** the same chip with a strip of hazard tape and a brighter edge, plus **Soften** to open the full panel. It fades on its own. Within one draft it only escalates, so a score wobbling between 5 and 6 doesn't flip the look.
 - **Why?:** every nudge and the panel have a **Why?** button. Only when tapped, it asks the on-device model which words drove the rating, how they might land, and for one small tweak. Quoted phrases are checked against your draft, and the answer stays in memory only.
 - **Hot (7+):** the flag turns red, the screen dims around your message box, and a caution-tape panel shows why, a calmer rewrite with a Copy button, your own note to yourself, and three choices: **Take 5** (a breathing timer), **Save for later**, or **I'm fine**. It appears next to the message box, or centered on the screen if you prefer (Settings).
 - **Quick runs:** several short messages sent back to back in the same conversation are read together with the next draft, since a run of calm-looking one-liners can add up to a defensive reply. The run only gets the credit when it reads clearly hotter (1+ point) than the draft alone; the nudge then says "Read with your last N messages" and offers **Just this one** to judge the draft on its own. Settings › Speed check sets what counts as quick (default: 4+ messages under 80 characters, each within 20 s; Watchful restores the original 60 s / 200 characters / 3 messages).
 - **Not heated:** if a nudge misreads a message, tap **Not heated** to keep it for later tuning. It doesn't change how the app behaves.
 
-When Caution Flag is watching, the menu bar pennant is green; it turns yellow or red for heated drafts, like racing flags. A plain silhouette means it's off (snoozed, in quiet hours, or watching no apps).
+When Caution Flag is watching, the menu bar pennant is green; it turns blue for a heads-up and yellow or red for heated drafts, like racing flags. A plain silhouette means it's off (snoozed, in quiet hours, or watching no apps).
 
 Requires macOS 15+. Apple's on-device model needs macOS 26+ with Apple Intelligence on; otherwise use Ollama.
 

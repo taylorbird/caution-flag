@@ -108,8 +108,9 @@ rm -rf "$APP"
 ditto "$BUILT" "$APP"
 echo "Installed $APP (build $BUILD_NUMBER)"
 # First dev run: start from the live settings (watched apps, sensitivity, ...).
-if ! defaults read "$BUNDLE_ID" onboardingCompleted >/dev/null 2>&1; then
+if ! defaults read "$BUNDLE_ID" copiedLiveSettings >/dev/null 2>&1; then
   defaults export "$LIVE_ID" - | defaults import "$BUNDLE_ID" - && echo "Copied live settings to $BUNDLE_ID"
+  defaults write "$BUNDLE_ID" copiedLiveSettings -bool true
 fi
 open "$APP"
 echo "Running $NAME. Switch back with scripts/use-live.sh"

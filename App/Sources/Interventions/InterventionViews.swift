@@ -6,6 +6,9 @@ enum Palette {
     static let warm = Color(red: 0.95, green: 0.70, blue: 0.20)
     static let hot = Color(red: 0.89, green: 0.33, blue: 0.30)
     static let breath = Color(red: 0.36, green: 0.62, blue: 0.75)
+    /// Heads-up: a racing blue flag (information, not a hazard), so the lowest level
+    /// doesn't borrow the caution yellow of real warnings.
+    static let headsUp = Color(red: 0.42, green: 0.68, blue: 0.96)
     /// Brand colors, matching the app icon (assets/icon/caution-flag.svg).
     static let caution = Color(red: 0xF5 / 255, green: 0xC5 / 255, blue: 0x42 / 255)
     static let asphalt = Color(red: 0x1F / 255, green: 0x2A / 255, blue: 0x36 / 255)
@@ -24,6 +27,7 @@ struct NudgeView: View {
     let onClose: () -> Void
 
     private var isWarm: Bool { model.style == .warm }
+    private var accent: Color { isWarm ? Palette.caution : Palette.headsUp }
     private static let corner: CGFloat = 14
 
     var body: some View {
@@ -36,11 +40,11 @@ struct NudgeView: View {
             } else {
                 row
                 if let count = model.runCount {
-                    RunNote(count: count, onJustThisOne: onJustThisOne)
+                    RunNote(count: count, accent: accent, onJustThisOne: onJustThisOne)
                         .padding(.top, 6)
                 }
                 if model.why != .idle {
-                    WhyCard(state: model.why, onNotHeated: onNotHeated)
+                    WhyCard(state: model.why, accent: accent, onNotHeated: onNotHeated)
                         .frame(width: 380)
                         .padding(.top, 10)
                 }
@@ -56,7 +60,7 @@ struct NudgeView: View {
         .clipShape(RoundedRectangle(cornerRadius: Self.corner))
         .overlay(
             RoundedRectangle(cornerRadius: Self.corner)
-                .strokeBorder(Palette.caution.opacity(isWarm ? 0.9 : 0.4), lineWidth: isWarm ? 1.5 : 1)
+                .strokeBorder(accent.opacity(isWarm ? 0.9 : 0.5), lineWidth: isWarm ? 1.5 : 1)
         )
         .padding(8)
     }
@@ -65,8 +69,8 @@ struct NudgeView: View {
         HStack(spacing: 10) {
             if !isWarm {
                 Circle()
-                    .strokeBorder(Palette.caution, lineWidth: 1.5)
-                    .background(Circle().fill(Palette.caution.opacity(0.35)).padding(3))
+                    .strokeBorder(accent, lineWidth: 1.5)
+                    .background(Circle().fill(accent.opacity(0.35)).padding(3))
                     .frame(width: 11, height: 11)
             }
             Text(model.message)
@@ -74,7 +78,7 @@ struct NudgeView: View {
                 .foregroundStyle(HotPanelView.ink)
                 .fixedSize()
             if model.why == .idle || isFailed {
-                WhyButton(action: onWhy)
+                WhyButton(tint: accent, action: onWhy)
             }
             if isWarm {
                 Button("Soften", action: onSoften)
@@ -113,13 +117,14 @@ struct NudgeView: View {
 /// and offers to judge this draft on its own.
 struct RunNote: View {
     let count: Int
+    var accent: Color = Palette.caution
     let onJustThisOne: () -> Void
 
     var body: some View {
         HStack(spacing: 8) {
             Image(systemName: "text.bubble")
                 .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(Palette.caution.opacity(0.8))
+                .foregroundStyle(accent.opacity(0.8))
             Text("Read with your last \(count) message\(count == 1 ? "" : "s")")
                 .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(HotPanelView.ink.opacity(0.7))
@@ -127,7 +132,7 @@ struct RunNote: View {
             Button("Just this one", action: onJustThisOne)
                 .buttonStyle(.plain)
                 .font(.system(size: 12, weight: .bold, design: .rounded))
-                .foregroundStyle(Palette.caution)
+                .foregroundStyle(accent)
                 .fixedSize()
                 .help("Judge this draft on its own, without the messages you just sent.")
             Spacer(minLength: 0)
@@ -137,6 +142,7 @@ struct RunNote: View {
 
 /// The "Why?" control: filled caution yellow so it's the first thing the eye finds.
 struct WhyButton: View {
+    var tint: Color = Palette.caution
     let action: () -> Void
 
     var body: some View {
@@ -146,7 +152,7 @@ struct WhyButton: View {
                 .foregroundStyle(Palette.asphalt)
                 .padding(.horizontal, 9)
                 .padding(.vertical, 4)
-                .background(Palette.caution, in: Capsule())
+                .background(tint, in: Capsule())
                 .contentShape(Capsule())
                 .fixedSize()
         }
@@ -160,6 +166,7 @@ struct WhyButton: View {
 /// and one small tweak. Shared by the nudge and the hot panel.
 struct WhyCard: View {
     let state: WhyState
+    var accent: Color = Palette.caution
     /// Nil hides the "Not heated" link (the hot panel has its own).
     var onNotHeated: (() -> Void)?
 
@@ -168,13 +175,13 @@ struct WhyCard: View {
             Text("WHY IT FLAGGED")
                 .font(.system(size: 10.5, weight: .heavy, design: .rounded))
                 .tracking(1.2)
-                .foregroundStyle(Palette.caution)
+                .foregroundStyle(accent)
             switch state {
             case .idle:
                 EmptyView()
             case .loading:
                 HStack(spacing: 8) {
-                    ProgressView().controlSize(.small).tint(Palette.caution)
+                    ProgressView().controlSize(.small).tint(accent)
                     Text("Taking a closer look…")
                         .font(.system(size: 12.5, weight: .medium))
                         .foregroundStyle(HotPanelView.ink.opacity(0.65))
@@ -185,10 +192,10 @@ struct WhyCard: View {
                         ForEach(why.phrases, id: \.self) { phrase in
                             Text("\u{201C}\(phrase)\u{201D}")
                                 .font(.system(size: 12.5, weight: .semibold))
-                                .foregroundStyle(Palette.caution)
+                                .foregroundStyle(accent)
                                 .padding(.horizontal, 7)
                                 .padding(.vertical, 3)
-                                .background(Palette.caution.opacity(0.13), in: RoundedRectangle(cornerRadius: 5))
+                                .background(accent.opacity(0.13), in: RoundedRectangle(cornerRadius: 5))
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                     }
@@ -205,7 +212,7 @@ struct WhyCard: View {
                             .foregroundStyle(Palette.asphalt)
                             .padding(.horizontal, 5)
                             .padding(.vertical, 1.5)
-                            .background(Palette.caution, in: RoundedRectangle(cornerRadius: 4))
+                            .background(accent, in: RoundedRectangle(cornerRadius: 4))
                         Text(why.tryInstead)
                             .font(.system(size: 13))
                             .foregroundStyle(HotPanelView.ink)

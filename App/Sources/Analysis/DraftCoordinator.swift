@@ -116,6 +116,8 @@ final class DraftCoordinator {
             session = Session(pid: snapshot.pid)
             explainTask?.cancel()
             explainTask = nil
+            // Text queued behind a Why? belongs to the old draft.
+            queuedText = nil
             interventions.setWhy(.idle)
             // A new draft: get the model loaded while the first words are typed.
             analyzers.currentAnalyzer()?.prepare()
@@ -232,8 +234,9 @@ final class DraftCoordinator {
             apply(provisional, text: text)
         }
 
-        // While Why? is asking the model, typing scores wait: Apple's model rejects a
-        // second request at once, which is what made Why? fail in 0.1.4.
+        // While Why? is asking the model, typing scores wait, so the tap isn't competing
+        // with a stream of scores (0.1.4's Why? failed in ~200 ms mid-typing: busy or
+        // rate-limited; the logged failure kind will say which).
         if analysisTask == nil, explainTask == nil {
             startModelScore(text)
         } else {
@@ -305,7 +308,8 @@ final class DraftCoordinator {
         } catch is CancellationError {
             return nil
         } catch {
-            analyzers.noteFailure(error)
+            // Busy is momentary; don't show the model as failing in the menu for it.
+            if (error as? ToneAnalyzerError) != .busy { analyzers.noteFailure(error) }
             // The error's kind only; never text.
             let kind = (error as? ToneAnalyzerError)?.kind ?? "other"
             log.notice("model failed kind=\(kind, privacy: .public)")
@@ -364,6 +368,8 @@ final class DraftCoordinator {
             self.rewriteTask = nil
             self.log.notice("rewrite in \(Int((clock.now - started) / .milliseconds(1))) ms")
             guard self.session != nil else { return }
+            // A failed rewrite (busy, timeout) may be asked for again on the next score.
+            if rewrite == nil { self.session?.rewriteRequestedFor = nil }
             self.session?.lastAssessment?.rewrite = rewrite
             self.interventions.updateRewrite(rewrite)
         }
@@ -449,6 +455,8 @@ extension DraftCoordinator: InterventionActions {
                     state = .ready(why)
                     break retry
                 } catch ToneAnalyzerError.busy {
+                    self?.log.notice("explain failed kind=busy attempt=\(attempts)")
+                    guard attempts < 3 else { break retry }
                     // Busy or rate-limited: back off and try again.
                     try? await Task.sleep(for: .milliseconds(700 * attempts))
                     if Task.isCancelled { return }
