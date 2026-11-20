@@ -1,9 +1,15 @@
-# Caution Flag
+<p align="center"><img src="assets/icon/caution-flag-glass.png" width="160" alt="Caution Flag icon: a dark pennant on caution yellow"></p>
 
-A macOS menu bar app that notices when a Slack draft is running hot and gently checks in before you send it. All analysis is local. Nothing you type leaves your Mac.
+<h1 align="center">Caution Flag</h1>
+
+<p align="center">A macOS menu bar app that notices when a chat draft is running hot and raises a flag before you send it.<br>All analysis is local. Nothing you type leaves your Mac.</p>
+
+<p align="center"><img src="assets/screenshots/hot-panel.png" width="420" alt="The hot-draft panel: a caution-yellow header reading 'Lift and coast.', hazard tape, the reason, a calmer rewrite with a Copy button, a note to yourself, and Take 5, Save for later and I'm fine buttons"></p>
+
+It watches the message box in Slack and other apps you choose, rates the tone as you type, and steps in when a draft is heated.
 
 - **Warm (score 4–6):** the menu bar flag turns yellow and a small pill appears above the message box. It fades on its own.
-- **Hot (7+):** the flag turns red and a panel shows why, a calmer rewrite with a Copy button, your own note to yourself, and three choices: **Take 5** (a breathing timer), **Save draft for later**, or **I'm fine, dismiss**.
+- **Hot (7+):** the flag turns red, the screen dims around your message box, and a caution-tape panel shows why, a calmer rewrite with a Copy button, your own note to yourself, and three choices: **Take 5** (a breathing timer), **Save for later**, or **I'm fine**. It appears next to the message box, or centered on the screen if you prefer (Settings).
 - **Quick runs:** several short messages sent back to back are read together with the next draft, since a run of calm-looking one-liners can add up to a defensive reply. The nudge offers to gather them into one message.
 - **Not heated:** if a nudge misreads a message, tap **Not heated** to keep it for later tuning. It doesn't change how the app behaves.
 
@@ -17,7 +23,7 @@ Requires macOS 15+. Apple's on-device model needs macOS 26+ with Apple Intellige
 brew install --cask taylorbird/caution-flag/caution-flag
 ```
 
-The tap ([taylorbird/homebrew-caution-flag](https://github.com/taylorbird/homebrew-caution-flag)) is public; this source repo is private. Release zips are signed with Developer ID, notarized, and attached to the tap's GitHub releases.
+The app then keeps itself up to date (Sparkle): it checks once a day and installs signed updates on its next relaunch. **Check for Updates…** is in the menu bar menu. Release zips are signed with Developer ID, notarized, and attached to the GitHub releases of the tap ([taylorbird/homebrew-caution-flag](https://github.com/taylorbird/homebrew-caution-flag)).
 
 ## Build and run
 
@@ -39,7 +45,7 @@ scripts/release.sh 0.2.0 --dry-run   # build, notarize, staple, zip; publishes n
 scripts/release.sh 0.2.0             # on main, clean tree: also tags, pushes, and updates the tap
 ```
 
-The full run sets the version in `project.yml` and commits it. It notarizes with the `notary` keychain profile and checks that Gatekeeper accepts the stapled app. Then it tags `v<version>`, creates a GitHub release with the zip on the tap repo, and bumps the cask's version and sha256. It needs `gh` logged in as `taylorbird` and the tap cloned at `../homebrew-caution-flag`.
+The full run sets the version in `project.yml` and commits it. It notarizes with the `notary` keychain profile and checks that Gatekeeper accepts the stapled app. Then it tags `v<version>`, creates a GitHub release with the zip on the tap repo, bumps the cask's version and sha256, and adds the release to the tap's Sparkle feed (`appcast.xml`), signed with the EdDSA key in the login Keychain. It needs `gh` logged in as `taylorbird`, the tap cloned at `../homebrew-caution-flag`, and that Keychain key. Back up the key with Sparkle's `generate_keys -x <file>`: without it, installed copies can't verify future updates.
 
 Tests and the sample harness live in the core package:
 
@@ -75,7 +81,7 @@ Quick checks always run first: all caps, `!!`/`?!`, profanity and insults, "alwa
 
 The model is asked for JSON with `heat` 0–10, `category` and a one-sentence `reason`. Apple's model uses guided generation (`@Generable`) with a prewarmed session. Ollama uses its structured-output `format` schema, and the parser tolerates code fences, prose, stringified numbers and odd category spellings. The calmer rewrite is a separate, plain-text call made only when the red panel opens, and it fills in place.
 
-Timing: the text field is checked every 0.25 s. Quick checks show a nudge about 0.8 s after you stop typing. The Apple model's score follows in about 1.5 s, and a rewrite in another 0.4–0.9 s. If Apple's safety layer declines the text, it's treated as at least warm.
+Timing: the text field is checked every 0.25 s, and drafts are rated while you type. Quick checks are instant. One model score is always in flight, and the newest text is scored as soon as it finishes, so a heated phrase usually brings up the panel about 1.5 s later without waiting for a pause. The model is warmed up when a new draft starts. A rewrite follows in about a second. If Apple's safety layer declines the text, it's treated as at least warm.
 
 Context: once two drafts in 20 minutes have run warm or hotter, scores get +1 until things settle.
 
@@ -111,8 +117,9 @@ Packages/CooldownCore/    pure logic, unit-tested
   SampleMessages          calm / heated / subtle fixtures (tests + harness)
 App/Sources/
   Capture/                TextCaptureService (AX polling every 250 ms on a background queue; focused app read via AX)
-  Analysis/               DraftCoordinator (0.8 s debounce, immediate every +280 chars, instant heuristic nudge), AnalyzerProvider
-  Interventions/          InterventionController, non-activating NSPanels, pill/panel/breathing views
+  Analysis/               DraftCoordinator (continuous scoring, one model call in flight, instant heuristic nudge), AnalyzerProvider
+  Interventions/          InterventionController, non-activating NSPanels, pill/panel/breathing views, DimmingWindow, PanelMotion
+  App/                    AppController, StatusItemController, UpdateController (Sparkle)
   Settings/               SettingsStore, DraftStore
   Windows/                onboarding, settings, saved drafts
 ```
