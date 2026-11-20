@@ -39,6 +39,8 @@ final class DraftCoordinator {
         var runApplies = false
         /// "Just this one": judge this draft on its own for the rest of it.
         var ignoreRun = false
+        /// The last model-based score for this draft, for the score-4 hysteresis.
+        var lastModelScore: Double?
     }
 
     static let modelTimeout: Double = 15
@@ -286,7 +288,15 @@ final class DraftCoordinator {
                 self.interventions.updateRewrite(nil)
             }
             self.session?.runApplies = runApplies
-            self.apply(assessment, text: text)
+            // Presentation gates for the draft itself (a run that earned the credit is exempt).
+            if !runApplies {
+                assessment = DraftGates.capShortDraft(assessment, draft: text, heuristic: self.scorer.evaluate(text))
+            }
+            let previous = self.session?.lastModelScore
+            self.session?.lastModelScore = assessment.score
+            let hold = assessment.level == .headsUp && first.result != nil
+                && !DraftGates.showsHeadsUp(score: assessment.score, previousModelScore: previous)
+            self.apply(assessment, text: text, holdHeadsUp: hold)
 
             // Catch up to whatever was typed meanwhile (unless Why? is now running;
             // it picks the queue back up when it finishes).
@@ -300,7 +310,9 @@ final class DraftCoordinator {
     /// One model call. Nil only when cancelled.
     private func score(_ text: String, with analyzer: ToneAnalyzer) async -> (result: ToneResult?, declined: Bool)? {
         do {
-            let result = try await withTimeout(Self.modelTimeout) { try await analyzer.analyze(text) }
+            let result = try await withTimeout(Self.modelTimeout) {
+                try await Self.retryingBusy { try await analyzer.analyze(text) }
+            }
             analyzers.noteSuccess()
             return (result, false)
         } catch ToneAnalyzerError.declined {
@@ -317,11 +329,31 @@ final class DraftCoordinator {
         }
     }
 
-    private func apply(_ assessment: ToneAssessment, text: String) {
+    /// `holdHeadsUp`: a lone score of 4 is recorded but not shown (see DraftGates).
+    /// Busy or rate-limited: back off (0.8 s, then 1.6 s) instead of dropping the score.
+    /// Without this, about a third of 0.1.4's typing scores silently fell back to the
+    /// keyword checks. Scores stay one at a time, so backing off here also paces them.
+    nonisolated private static func retryingBusy<T: Sendable>(_ call: @escaping @Sendable () async throws -> T) async throws -> T {
+        var delay = 0.8
+        for _ in 0..<2 {
+            do { return try await call() } catch ToneAnalyzerError.busy {
+                try await Task.sleep(for: .seconds(delay))
+                delay *= 2
+            }
+        }
+        return try await call()
+    }
+
+    private func apply(_ assessment: ToneAssessment, text: String, holdHeadsUp: Bool = false) {
         guard session != nil, let snapshot = latest else { return }
         // Scores and timing only; never the text.
-        log.notice("assessed score=\(assessment.score, format: .fixed(precision: 1)) level=\(assessment.level.name, privacy: .public) runContext=\(self.session?.burstContext?.count ?? 0) runApplies=\(self.session?.runApplies == true)")
+        log.notice("assessed score=\(assessment.score, format: .fixed(precision: 1)) level=\(assessment.level.name, privacy: .public) runContext=\(self.session?.burstContext?.count ?? 0) runApplies=\(self.session?.runApplies == true) held=\(holdHeadsUp)")
         session?.lastAssessment = assessment
+        if holdHeadsUp {
+            status.level = .calm
+            interventions.hideAll()
+            return
+        }
         status.level = assessment.level
 
         // Heads-up counts too: the "rough stretch" rule kept its original 4+ threshold.

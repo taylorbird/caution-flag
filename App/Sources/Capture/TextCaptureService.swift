@@ -203,9 +203,19 @@ final class TextCaptureService: @unchecked Sendable {
     private func isTextInput(_ element: AXUIElement) -> Bool {
         guard let role = AX.role(element) else { return false }
         if AX.subrole(element) == "AXSearchField" { return false }
-        if Self.textRoles.contains(role) { return true }
+        // Only editable text. A read-only text area (e.g. a Messages bubble that took
+        // focus) carries other people's words; a Not heated report showed one being
+        // rated as the draft. Composers in Slack, Echo and Messages report settable.
+        if Self.textRoles.contains(role) { return !Self.isReadOnly(element) }
         // contenteditable regions sometimes show up as groups with a settable string value.
         return role == kAXGroupRole && AX.isValueSettable(element) && AX.string(element, kAXValueAttribute) != nil
+    }
+
+    /// True only when the app answers that the value can't be set; unknown counts as editable.
+    private static func isReadOnly(_ element: AXUIElement) -> Bool {
+        var settable: DarwinBoolean = false
+        return AXUIElementIsAttributeSettable(element, kAXValueAttribute as CFString, &settable) == .success
+            && !settable.boolValue
     }
 
     private func isSecure(_ element: AXUIElement) -> Bool {
