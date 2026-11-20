@@ -61,6 +61,8 @@ final class SettingsStore: ObservableObject {
     @Published var onboardingCompleted: Bool { didSet { defaults.set(onboardingCompleted, forKey: Keys.onboarded) } }
     /// Score a quick run of sent messages together with the next draft.
     @Published var noticeBursts: Bool { didSet { defaults.set(noticeBursts, forKey: Keys.noticeBursts) } }
+    /// Quick-run speed check: 1 (relaxed) … 5 (watchful). See BurstTracker.tuning(level:).
+    @Published var burstSensitivity: Double { didSet { defaults.set(burstSensitivity, forKey: Keys.burstSensitivity) } }
     /// Dim the screen around the hot panel, leaving the message box lit.
     @Published var dimForHot: Bool { didSet { defaults.set(dimForHot, forKey: Keys.dimForHot) } }
     /// Animate the hot panel (waving flag, rolling tape) even when macOS Reduce Motion is on.
@@ -94,6 +96,7 @@ final class SettingsStore: ObservableObject {
         personalNotes = defaults.string(forKey: Keys.notes) ?? ""
         onboardingCompleted = defaults.bool(forKey: Keys.onboarded)
         noticeBursts = defaults.object(forKey: Keys.noticeBursts) as? Bool ?? true
+        burstSensitivity = defaults.object(forKey: Keys.burstSensitivity) as? Double ?? 3
         dimForHot = defaults.object(forKey: Keys.dimForHot) as? Bool ?? true
         animateDespiteReduceMotion = defaults.bool(forKey: Keys.animateDespiteReduceMotion)
         panelPlacement = defaults.string(forKey: Keys.panelPlacement).flatMap(PanelPlacement.init(rawValue:)) ?? .nearMessage
@@ -142,6 +145,7 @@ final class SettingsStore: ObservableObject {
         static let notes = "personalNotes"
         static let onboarded = "onboardingCompleted"
         static let noticeBursts = "noticeBursts"
+        static let burstSensitivity = "burstSensitivity"
         static let dimForHot = "dimForHot"
         static let panelPlacement = "panelPlacement"
         static let animateDespiteReduceMotion = "animateDespiteReduceMotion"

@@ -1,5 +1,6 @@
 import AppKit
 import ApplicationServices
+import CooldownCore
 import os
 
 /// A point-in-time read of the draft in the focused text field.
@@ -11,6 +12,18 @@ struct DraftSnapshot: Equatable {
     /// AX coordinates (top-left origin).
     let frame: CGRect?
     let element: AXUIElement
+    /// Which conversation this composer belongs to: the focused window's title plus the
+    /// composer element's identity. Memory only; logs carry a short hash, never the title.
+    let conversation: String
+
+    /// A short, non-reversible tag for logs, to check runs split per room.
+    var conversationTag: String { Self.tag(conversation) }
+
+    static func tag(_ s: String) -> String {
+        var h: UInt32 = 2166136261
+        for b in s.utf8 { h = (h ^ UInt32(b)) &* 16777619 }
+        return String(format: "%04x", h & 0xffff)
+    }
 
     static func == (lhs: DraftSnapshot, rhs: DraftSnapshot) -> Bool {
         lhs.text == rhs.text && lhs.pid == rhs.pid && lhs.frame == rhs.frame
@@ -120,11 +133,15 @@ final class TextCaptureService: @unchecked Sendable {
         guard let field = findFocusedTextField(app: app, pid: front.pid) else { return .noTextField }
         if isSecure(field) { return .secureField }
 
-        var text = AX.string(field, kAXValueAttribute) ?? ""
+        // Mention chips and the like can leak UI labels into the value; drop them.
+        var text = CaptureCleanup.clean(AX.string(field, kAXValueAttribute) ?? "")
         if text.count > Self.maxChars { text = String(text.prefix(Self.maxChars)) }
+        let window = AX.element(app, kAXFocusedWindowAttribute)
+        let title = window.flatMap { AX.string($0, kAXTitleAttribute) } ?? ""
         return .captured(DraftSnapshot(
             text: text, bundleID: front.bundleID, appName: front.name, pid: front.pid,
-            frame: AX.frame(field), element: field
+            frame: AX.frame(field), element: field,
+            conversation: "\(title)\u{1F}\(CFHash(field))"
         ))
     }
 

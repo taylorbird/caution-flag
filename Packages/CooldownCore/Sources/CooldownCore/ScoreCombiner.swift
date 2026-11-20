@@ -39,8 +39,9 @@ public struct ScoreCombiner: Sendable {
             source = .model(modelName ?? "model")
         } else if modelDeclined {
             // The on-device model's safety layer declined the text. That
-            // usually means strong language, so treat it as at least warm.
-            score = max(h, 5)
+            // usually means strong language, so treat it as at least warm (the pill,
+            // not the quieter heads-up chip).
+            score = max(h, HeatLevel.warmThreshold)
             category = heuristic.suggestedCategory == .calm ? .venting : heuristic.suggestedCategory
             reason = Phrasings.reason(for: category)
             rewrite = nil
@@ -90,5 +91,17 @@ public struct RecentHeatTracker: Sendable {
 
     private mutating func prune(now: Date) {
         events.removeAll { now.timeIntervalSince($0) > window }
+    }
+}
+
+/// Whether a quick run deserves the credit for a flag. The run is scored together with
+/// the draft, but its panel only shows when the run reads clearly hotter than the draft
+/// alone; otherwise the draft is judged on its own, as if there were no run.
+public enum RunDecision {
+    /// How much hotter (in score points) the run must read than the draft alone.
+    public static let margin = 1.0
+
+    public static func runApplies(combined: ToneAssessment, alone: ToneAssessment) -> Bool {
+        combined.level > .calm && combined.score >= alone.score + margin
     }
 }

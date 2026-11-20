@@ -64,6 +64,27 @@ public struct OllamaToneAnalyzer: ToneAnalyzer {
         return TonePrompt.cleanRewrite(try Self.decodeEnvelope(data))
     }
 
+    public func explain(_ text: String, assessment: ToneAssessment) async throws -> ToneExplanation {
+        var request = try makeRequest(for: text)
+        var body = try JSONSerialization.jsonObject(with: request.httpBody!) as! [String: Any]
+        body["format"] = TonePrompt.explainSchema
+        body["options"] = ["temperature": 0.3, "num_predict": 250]
+        body["messages"] = [
+            ["role": "system", "content": TonePrompt.explainInstructions],
+            ["role": "user", "content": TonePrompt.explainPrompt(for: text, assessment: assessment)],
+        ]
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let (data, response) = try await session.data(for: request)
+        guard (response as? HTTPURLResponse)?.statusCode == 200 else { throw ToneAnalyzerError.badResponse("explain failed") }
+        do {
+            return try ToneResponseParser.parseExplanation(try Self.decodeEnvelope(data), draft: text)
+        } catch let error as ToneAnalyzerError {
+            throw error
+        } catch {
+            throw ToneAnalyzerError.badResponse("unparseable explanation")
+        }
+    }
+
     public func makeRequest(for text: String) throws -> URLRequest {
         var request = URLRequest(url: baseURL.appendingPathComponent("api/chat"))
         request.httpMethod = "POST"

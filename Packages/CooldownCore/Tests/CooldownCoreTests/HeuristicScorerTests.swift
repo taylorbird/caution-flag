@@ -106,7 +106,7 @@ struct SampleHarnessTests {
     @Test(arguments: SampleMessages.heatedObvious)
     func obviousSamplesAreFlaggedWithoutAModel(sample: SampleMessage) {
         let a = combiner.combine(model: nil, heuristic: scorer.evaluate(sample.text), recentHeatedDrafts: 0)
-        #expect(a.level >= .warm, "\(sample.text) scored \(a.score)")
+        #expect(a.level > .calm, "\(sample.text) scored \(a.score)")
     }
 
     @Test(arguments: SampleMessages.heatedSubtle)

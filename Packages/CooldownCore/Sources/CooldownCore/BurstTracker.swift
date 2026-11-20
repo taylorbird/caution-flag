@@ -29,6 +29,37 @@ public struct BurstTracker: Sendable {
         self.maxKept = maxKept
     }
 
+    /// The "speed check" slider: 1 (relaxed) … 5 (watchful). Higher counts slower,
+    /// longer runs. 5 matches the original 0.1.2 behavior; 3 is the default.
+    public struct Tuning: Equatable, Sendable {
+        public let maxGap: TimeInterval
+        public let maxLength: Int
+        public let minPriorSends: Int
+    }
+
+    public static func tuning(level: Double) -> Tuning {
+        switch Int(min(5, max(1, level)).rounded()) {
+        case 1: Tuning(maxGap: 10, maxLength: 60, minPriorSends: 4)
+        case 2: Tuning(maxGap: 15, maxLength: 70, minPriorSends: 3)
+        case 4: Tuning(maxGap: 35, maxLength: 140, minPriorSends: 2)
+        case 5: Tuning(maxGap: 60, maxLength: 200, minPriorSends: 2)
+        default: Tuning(maxGap: 20, maxLength: 80, minPriorSends: 3)
+        }
+    }
+
+    public init(level: Double) {
+        self.init()
+        configure(level: level)
+    }
+
+    /// Applies the slider without forgetting the current run.
+    public mutating func configure(level: Double) {
+        let t = Self.tuning(level: level)
+        maxGap = t.maxGap
+        maxLength = t.maxLength
+        minPriorSends = t.minPriorSends
+    }
+
     public mutating func recordSend(_ text: String, at date: Date = Date()) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, trimmed.count <= maxLength else {

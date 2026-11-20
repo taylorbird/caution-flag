@@ -8,9 +8,11 @@
 
 It watches the message box in Slack and other apps you choose, rates the tone as you type, and steps in when a draft is heated.
 
-- **Warm (score 4–6):** the menu bar flag turns yellow and a small pill appears above the message box. It fades on its own.
+- **Heads-up (score 4–5):** the menu bar flag turns yellow and a quiet chip above the message box says the draft might be worth a reread. It fades after a few seconds.
+- **Warm (score 6):** the same chip with a strip of hazard tape and a brighter edge, plus **Soften** to open the full panel. It fades on its own. Within one draft it only escalates, so a score wobbling between 5 and 6 doesn't flip the look.
+- **Why?:** every nudge and the panel have a **Why?** button. Only when tapped, it asks the on-device model which words drove the rating, how they might land, and for one small tweak. Quoted phrases are checked against your draft, and the answer stays in memory only.
 - **Hot (7+):** the flag turns red, the screen dims around your message box, and a caution-tape panel shows why, a calmer rewrite with a Copy button, your own note to yourself, and three choices: **Take 5** (a breathing timer), **Save for later**, or **I'm fine**. It appears next to the message box, or centered on the screen if you prefer (Settings).
-- **Quick runs:** several short messages sent back to back are read together with the next draft, since a run of calm-looking one-liners can add up to a defensive reply. The nudge offers to gather them into one message.
+- **Quick runs:** several short messages sent back to back in the same conversation are read together with the next draft, since a run of calm-looking one-liners can add up to a defensive reply. The run only gets the credit when it reads clearly hotter (1+ point) than the draft alone; the nudge then says "Read with your last N messages" and offers **Just this one** to judge the draft on its own. Settings › Speed check sets what counts as quick (default: 4+ messages under 80 characters, each within 20 s; Watchful restores the original 60 s / 200 characters / 3 messages).
 - **Not heated:** if a nudge misreads a message, tap **Not heated** to keep it for later tuning. It doesn't change how the app behaves.
 
 When Caution Flag is watching, the menu bar pennant is green; it turns yellow or red for heated drafts, like racing flags. A plain silhouette means it's off (snoozed, in quiet hours, or watching no apps).
@@ -57,7 +59,7 @@ swift run  --package-path Packages/CooldownCore cooldown-harness --ollama --mode
 swift run  --package-path Packages/CooldownCore cooldown-harness --apple --text "per my last message…"
 ```
 
-To check the panels without Slack: `"/Applications/Caution Flag.app/Contents/MacOS/Caution Flag" -demo hot` (or `warm`, `breathing`, `onboarding`, `settings`).
+To check the panels without Slack: `"/Applications/Caution Flag.app/Contents/MacOS/Caution Flag" -demo hot` (or `headsup`, `warm`, `why`, `hotwhy`, `whyfail`, `run`, `hotrun`, `breathing`, `onboarding`, `settings`).
 
 ## Permissions
 
@@ -79,11 +81,11 @@ Settings › Model offers **Automatic** (Apple, then Ollama), **Apple**, **Ollam
 
 Quick checks always run first: all caps, `!!`/`?!`, profanity and insults, "always"/"never", blame phrases ("how many times", "your fault"), passive-aggressive phrases ("per my last message", "as I already said"), and sarcasm markers. They lift the model's score but never lower it. A very short draft (≤30 characters) with no signals skips the model.
 
-The model is asked for JSON with `heat` 0–10, `category` and a one-sentence `reason`. Apple's model uses guided generation (`@Generable`) with a prewarmed session. Ollama uses its structured-output `format` schema, and the parser tolerates code fences, prose, stringified numbers and odd category spellings. The calmer rewrite is a separate, plain-text call made only when the red panel opens, and it fills in place.
+The model is asked for JSON with `heat` 0–10, `category` and a one-sentence `reason`. Apple's model uses guided generation (`@Generable`) with a prewarmed session. Ollama uses its structured-output `format` schema, and the parser tolerates code fences, prose, stringified numbers and odd category spellings. The calmer rewrite is a separate, plain-text call made only when the red panel opens, and it fills in place. **Why?** is a third call with its own short prompt, made only on a tap; it explains a rating and never changes it. Try it from the terminal with `cooldown-harness --apple --why --text "…"`.
 
-Timing: the text field is checked every 0.25 s, and drafts are rated while you type. Quick checks are instant. One model score is always in flight, and the newest text is scored as soon as it finishes, so a heated phrase usually brings up the panel about 1.5 s later without waiting for a pause. The model is warmed up when a new draft starts. A rewrite follows in about a second. If Apple's safety layer declines the text, it's treated as at least warm.
+Timing: the text field is checked every 0.25 s, and drafts are rated while you type. Quick checks are instant. One model score is always in flight, and the newest text is scored as soon as it finishes, so a heated phrase usually brings up the panel about 1.5 s later without waiting for a pause. The model is warmed up when a new draft starts. A rewrite follows in about a second. If Apple's safety layer declines the text, it's treated as at least warm (score 6).
 
-Context: once two drafts in 20 minutes have run warm or hotter, scores get +1 until things settle.
+Context: once two drafts in 20 minutes have scored 4 or higher (heads-up or above), scores get +1 until things settle.
 
 ### Setting up Ollama
 

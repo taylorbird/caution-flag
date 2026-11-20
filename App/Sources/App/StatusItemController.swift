@@ -60,7 +60,7 @@ final class StatusItemController: ObservableObject {
         // On: racing flag colors, so "watching" reads at a glance.
         switch level {
         case nil, .calm?: return Self.pennant(color: .systemGreen)
-        case .warm?: return Self.pennant(color: .systemYellow)
+        case .headsUp?, .warm?: return Self.pennant(color: .systemYellow)
         case .hot?: return Self.pennant(color: .systemRed)
         }
     }

@@ -2,6 +2,14 @@ import Foundation
 
 /// Short, kind copy. Rotated so it never feels like a canned scold.
 public enum Phrasings {
+    /// The quiet heads-up chip. Short and low-key: a reread, not an alarm.
+    public static let headsUp: [String] = [
+        "Heads up: worth a reread",
+        "Might be worth a second look",
+        "Small flag on this one",
+        "Could read a touch sharp",
+    ]
+
     public static let warm: [String] = [
         "This is reading a little hot. Still want to send it?",
         "Might land sharper than you mean. Worth a second look?",

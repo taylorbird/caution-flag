@@ -26,7 +26,7 @@ public enum ToneResponseParser {
         let clamped = min(10, max(0, heat))
 
         let categoryRaw = firstValue(in: lowered, keys: ["category", "tone", "label"]) as? String
-        let category = categoryRaw.flatMap(ToneCategory.normalize) ?? (clamped < HeatLevel.warmThreshold ? .calm : .frustrated)
+        let category = categoryRaw.flatMap(ToneCategory.normalize) ?? (clamped < HeatLevel.headsUpThreshold ? .calm : .frustrated)
 
         let reason = (firstValue(in: lowered, keys: ["reason", "explanation", "why"]) as? String)?
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
@@ -38,6 +38,21 @@ public enum ToneResponseParser {
         }
 
         return ToneResult(heat: clamped, category: category, reason: reason, rewrite: rewrite)
+    }
+
+    /// Parses the "Why?" answer from a local model's JSON.
+    public static func parseExplanation(_ raw: String, draft: String) throws -> ToneExplanation {
+        guard let json = extractJSONObject(from: raw) else { throw ToneParseError.noJSON }
+        guard let data = json.data(using: .utf8),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else { throw ToneParseError.invalidJSON }
+        let lowered = Dictionary(object.map { ($0.key.lowercased(), $0.value) }, uniquingKeysWith: { a, _ in a })
+        let phrases: [String] = (lowered["phrases"] as? [Any])?.compactMap { $0 as? String }
+            ?? (lowered["phrases"] as? String).map { [$0] } ?? []
+        let land = (firstValue(in: lowered, keys: ["howitmightland", "how_it_might_land", "land", "explanation"]) as? String) ?? ""
+        let tryInstead = (firstValue(in: lowered, keys: ["tryinstead", "try_instead", "suggestion"]) as? String) ?? ""
+        guard !land.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw ToneParseError.invalidJSON }
+        return ToneExplanation(phrases: phrases, howItMightLand: land, tryInstead: tryInstead, draft: draft)
     }
 
     // MARK: - Helpers

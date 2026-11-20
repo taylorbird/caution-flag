@@ -47,11 +47,7 @@ final class MisreadStore: ObservableObject {
         case .model(let name): "model:\(name)"
         case .modelDeclined(let name): "declined:\(name)"
         }
-        let level: String = switch assessment.level {
-        case .calm: "calm"
-        case .warm: "warm"
-        case .hot: "hot"
-        }
+        let level = assessment.level.name
         reports.insert(MisreadReport(
             text: text, appName: appName, createdAt: Date(),
             score: assessment.score, level: level, category: assessment.category.rawValue,

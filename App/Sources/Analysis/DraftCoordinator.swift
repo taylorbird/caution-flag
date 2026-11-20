@@ -17,6 +17,8 @@ final class DraftCoordinator {
     /// Recently sent messages, in memory only, for noticing quick runs.
     private var bursts = BurstTracker()
     private var burstPid: pid_t?
+    /// The conversation the run's sends went to; a send elsewhere starts a fresh run.
+    private var burstConversation: String?
     /// Whether the last change to the draft removed text (e.g. held Delete),
     /// so emptying the field next is a deletion, not a send.
     private var wasShrinking = false
@@ -24,6 +26,7 @@ final class DraftCoordinator {
 
     /// One continuous draft: from the first character to the field being emptied.
     private struct Session {
+        let id = UUID()
         let pid: pid_t
         var dismissed = false
         var countedForContext = false
@@ -32,6 +35,10 @@ final class DraftCoordinator {
         var rewriteRequestedFor: String?
         /// Earlier messages in a quick run, scored together with this draft.
         var burstContext: [String]?
+        /// The run read clearly hotter than the draft alone, so the flag is the run's.
+        var runApplies = false
+        /// "Just this one": judge this draft on its own for the rest of it.
+        var ignoreRun = false
     }
 
     static let modelTimeout: Double = 15
@@ -44,6 +51,8 @@ final class DraftCoordinator {
     private var analysisTask: Task<Void, Never>?
     private var queuedText: String?
     private var rewriteTask: Task<Void, Never>?
+    /// The on-demand "Why?" call. Never started by typing, only by a tap.
+    private var explainTask: Task<Void, Never>?
 
     init(settings: SettingsStore, analyzers: AnalyzerProvider, interventions: InterventionController,
          status: StatusItemController, capture: TextCaptureService, drafts: DraftStore,
@@ -97,7 +106,7 @@ final class DraftCoordinator {
             // Text that vanishes in one step (not after a run of deletions) was sent.
             if samePid, !shrankBefore, let previous,
                previous.text.trimmingCharacters(in: .whitespacesAndNewlines).count >= 2 {
-                noteSend(previous.text, pid: snapshot.pid)
+                noteSend(previous.text, pid: snapshot.pid, conversation: previous.conversation)
             }
             endSession()
             return
@@ -105,6 +114,9 @@ final class DraftCoordinator {
         if session == nil || session?.pid != snapshot.pid
             || (samePid && previous.map { Self.isReplacement(of: $0.text, by: snapshot.text) } == true) {
             session = Session(pid: snapshot.pid)
+            explainTask?.cancel()
+            explainTask = nil
+            interventions.setWhy(.idle)
             // A new draft: get the model loaded while the first words are typed.
             analyzers.currentAnalyzer()?.prepare()
         }
@@ -136,7 +148,12 @@ final class DraftCoordinator {
 
     func refreshSuppression() {
         // Runs every 30 s: let sent text age out of memory even if nothing else happens.
-        if settings.noticeBursts { _ = bursts.context() } else { bursts.reset() }
+        if settings.noticeBursts {
+            bursts.configure(level: settings.burstSensitivity)
+            _ = bursts.context()
+        } else {
+            bursts.reset()
+        }
         analyzers.refresh()
         if settings.suppressionReason != nil {
             bursts.reset()
@@ -149,28 +166,38 @@ final class DraftCoordinator {
 
     // MARK: - Quick runs
 
-    private func noteSend(_ text: String, pid: pid_t) {
+    private func noteSend(_ text: String, pid: pid_t, conversation: String) {
         guard settings.noticeBursts else {
             bursts.reset()
             return
         }
-        if burstPid != pid {
+        bursts.configure(level: settings.burstSensitivity)
+        if burstPid != pid || burstConversation != conversation {
             bursts.reset()
             burstPid = pid
+            burstConversation = conversation
         }
         bursts.recordSend(text)
-        log.notice("send noticed length=\(text.count) runSends=\(self.bursts.sendCount)")
+        log.notice("send noticed length=\(text.count) runSends=\(self.bursts.sendCount) conv=\(DraftSnapshot.tag(conversation), privacy: .public)")
     }
 
-    /// The earlier messages of a quick run in this app, if one is underway.
+    /// The earlier messages of a quick run in this conversation, if one is underway.
     private func burstContext() -> [String]? {
-        guard settings.noticeBursts, let pid = session?.pid, pid == burstPid else { return nil }
+        guard settings.noticeBursts, session?.ignoreRun == false, let pid = session?.pid, pid == burstPid,
+              latest?.conversation == burstConversation else { return nil }
+        bursts.configure(level: settings.burstSensitivity)
         return bursts.context()
     }
 
-    /// What gets scored and rewritten: the draft alone, or the run plus the draft.
+    /// What gets scored: the draft alone, or the run plus the draft.
     private func scoredText(for text: String) -> String {
         session?.burstContext.map { BurstTracker.combined($0, draft: text) } ?? text
+    }
+
+    /// What the flag is about, for the rewrite, Why? and Not heated: the run only when
+    /// the run is what made it hot.
+    private func presentedText(for text: String) -> String {
+        session?.runApplies == true ? scoredText(for: text) : text
     }
 
     // MARK: - Analysis
@@ -197,8 +224,10 @@ final class DraftCoordinator {
             return
         }
 
-        // Show the instant heuristic verdict now; the model can only raise it.
-        let provisional = combiner.combine(model: nil, heuristic: report, recentHeatedDrafts: recent)
+        // Show the instant heuristic verdict now; the model can only raise it. Judged on the
+        // draft alone: a run only gets credit once the model has compared the two.
+        let provisional = combiner.combine(model: nil, heuristic: isBurst ? scorer.evaluate(text) : report,
+                                           recentHeatedDrafts: recent)
         if provisional.level > .calm {
             apply(provisional, text: text)
         }
@@ -216,31 +245,34 @@ final class DraftCoordinator {
         let report = scorer.evaluate(scored)
         let combiner = ScoreCombiner(sensitivity: settings.sensitivity)
         let recent = heatTracker.count()
+        let isBurst = session?.burstContext != nil
 
         analysisTask = Task { [weak self] in
-            var result: ToneResult?
-            var declined = false
             let clock = ContinuousClock()
             let started = clock.now
-            do {
-                result = try await withTimeout(Self.modelTimeout) { try await analyzer.analyze(scored) }
-                self?.analyzers.noteSuccess()
-            } catch ToneAnalyzerError.declined {
-                declined = true
-            } catch is CancellationError {
-                return
-            } catch {
-                self?.analyzers.noteFailure(error)
-            }
+            guard let first = await self?.score(scored, with: analyzer) else { return }
             guard !Task.isCancelled, let self else { return }
-            let ms = Int((clock.now - started) / .milliseconds(1))
             // Timing and length only; never the text.
-            self.log.notice("model scored in \(ms) ms length=\(scored.count)")
-            self.analysisTask = nil
-            let assessment = combiner.combine(
-                model: result, modelName: analyzer.displayName, modelDeclined: declined,
+            self.log.notice("model scored in \(Int((clock.now - started) / .milliseconds(1))) ms length=\(scored.count)")
+            var assessment = combiner.combine(
+                model: first.result, modelName: analyzer.displayName, modelDeclined: first.declined,
                 heuristic: report, recentHeatedDrafts: recent
             )
+            var runApplies = false
+            if isBurst, assessment.level > .calm {
+                // The run flagged it; does the draft alone read nearly as hot? Then the
+                // draft is the story and the run gets no credit (one extra call, only here).
+                guard let solo = await self.score(text, with: analyzer), !Task.isCancelled else { return }
+                let alone = combiner.combine(
+                    model: solo.result, modelName: analyzer.displayName, modelDeclined: solo.declined,
+                    heuristic: self.scorer.evaluate(text), recentHeatedDrafts: recent
+                )
+                runApplies = RunDecision.runApplies(combined: assessment, alone: alone)
+                self.log.notice("run check combined=\(assessment.score, format: .fixed(precision: 1)) alone=\(alone.score, format: .fixed(precision: 1)) runApplies=\(runApplies)")
+                if !runApplies { assessment = alone }
+            }
+            self.analysisTask = nil
+            self.session?.runApplies = runApplies
             self.apply(assessment, text: text)
 
             // Catch up to whatever was typed meanwhile.
@@ -251,14 +283,31 @@ final class DraftCoordinator {
         }
     }
 
+    /// One model call. Nil only when cancelled.
+    private func score(_ text: String, with analyzer: ToneAnalyzer) async -> (result: ToneResult?, declined: Bool)? {
+        do {
+            let result = try await withTimeout(Self.modelTimeout) { try await analyzer.analyze(text) }
+            analyzers.noteSuccess()
+            return (result, false)
+        } catch ToneAnalyzerError.declined {
+            return (nil, true)
+        } catch is CancellationError {
+            return nil
+        } catch {
+            analyzers.noteFailure(error)
+            return (nil, false)
+        }
+    }
+
     private func apply(_ assessment: ToneAssessment, text: String) {
         guard session != nil, let snapshot = latest else { return }
         // Scores and timing only; never the text.
-        log.notice("assessed score=\(assessment.score, format: .fixed(precision: 1)) level=\(assessment.level.rawValue) runContext=\(self.session?.burstContext?.count ?? 0)")
+        log.notice("assessed score=\(assessment.score, format: .fixed(precision: 1)) level=\(assessment.level.rawValue) runContext=\(self.session?.burstContext?.count ?? 0) runApplies=\(self.session?.runApplies == true)")
         session?.lastAssessment = assessment
         status.level = assessment.level
 
-        if assessment.level >= .warm, session?.countedForContext == false {
+        // Heads-up counts too: the "rough stretch" rule kept its original 4+ threshold.
+        if assessment.level >= .headsUp, session?.countedForContext == false {
             heatTracker.record()
             session?.countedForContext = true
         }
@@ -271,12 +320,12 @@ final class DraftCoordinator {
             interventions.hideAll()
             return
         }
-        let burst = session.burstContext != nil
+        let runCount = session.runApplies ? session.burstContext?.count : nil
         switch assessment.level {
-        case .warm:
-            interventions.showPill(for: assessment, anchor: snapshot.frame, burst: burst)
+        case .headsUp, .warm:
+            interventions.showNudge(for: assessment, anchor: snapshot.frame, runCount: runCount)
         case .hot:
-            interventions.showPanel(for: assessment, anchor: snapshot.frame, notes: settings.personalNotes, burst: burst)
+            interventions.showPanel(for: assessment, anchor: snapshot.frame, notes: settings.personalNotes, runCount: runCount)
             fetchRewriteIfNeeded(for: snapshot.text)
         case .calm:
             break
@@ -286,7 +335,7 @@ final class DraftCoordinator {
     /// Rewrites are slower, so they're fetched only once the panel is up, then filled in place.
     private func fetchRewriteIfNeeded(for text: String) {
         // For a quick run, the calmer version gathers the whole run into one message.
-        let target = scoredText(for: text)
+        let target = presentedText(for: text)
         // One rewrite at a time: while typing continues under an open panel, the next
         // score after this one finishes asks again for the newer text.
         guard rewriteTask == nil, session?.rewriteRequestedFor != target,
@@ -309,6 +358,7 @@ final class DraftCoordinator {
     private func endSession() {
         cancelWork()
         session = nil
+        interventions.setWhy(.idle)
         interventions.hideAll()
         status.level = nil
     }
@@ -319,6 +369,8 @@ final class DraftCoordinator {
         queuedText = nil
         rewriteTask?.cancel()
         rewriteTask = nil
+        explainTask?.cancel()
+        explainTask = nil
     }
 }
 
@@ -331,7 +383,7 @@ extension DraftCoordinator: InterventionActions {
     func expandPill() {
         guard let assessment = session?.lastAssessment, let snapshot = latest else { return }
         interventions.showPanel(for: assessment, anchor: snapshot.frame, notes: settings.personalNotes,
-                                burst: session?.burstContext != nil)
+                                runCount: session?.runApplies == true ? session?.burstContext?.count : nil)
         fetchRewriteIfNeeded(for: snapshot.text)
     }
 
@@ -349,12 +401,69 @@ extension DraftCoordinator: InterventionActions {
 
     func markNotHeated() -> Bool {
         guard let snapshot = latest, !snapshot.text.isEmpty, let assessment = session?.lastAssessment else { return false }
-        misreads.record(text: scoredText(for: snapshot.text), appName: snapshot.appName, assessment: assessment,
-                        sensitivity: settings.sensitivity, burst: session?.burstContext != nil)
+        misreads.record(text: presentedText(for: snapshot.text), appName: snapshot.appName, assessment: assessment,
+                        sensitivity: settings.sensitivity, burst: session?.runApplies == true)
         // Quiet for the rest of this draft, but the controller hides the UI after a brief thanks.
         session?.dismissed = true
         log.notice("misread filed score=\(assessment.score, format: .fixed(precision: 1)) level=\(assessment.level.rawValue)")
         return true
+    }
+
+    func explain() {
+        guard explainTask == nil, let session, let assessment = session.lastAssessment, let snapshot = latest,
+              let analyzer = analyzers.currentAnalyzer() else {
+            if analyzers.currentAnalyzer() == nil {
+                interventions.setWhy(.failed("The on-device model isn't available right now, so there's no closer look to give."))
+            }
+            return
+        }
+        let target = presentedText(for: snapshot.text)
+        let sessionID = session.id
+        interventions.setWhy(.loading)
+        explainTask = Task { [weak self] in
+            let clock = ContinuousClock()
+            let started = clock.now
+            let state: WhyState
+            do {
+                let why = try await withTimeout(Self.modelTimeout) { try await analyzer.explain(target, assessment: assessment) }
+                state = .ready(why)
+            } catch is CancellationError {
+                return
+            } catch ToneAnalyzerError.declined {
+                state = .failed("Apple's on-device safety filter wouldn't look at this one. A single word can trip it, so it doesn't mean the draft is heated.")
+            } catch ToneAnalyzerError.timeout {
+                state = .failed("That took too long. Try Why? again in a moment.")
+            } catch {
+                state = .failed("Couldn't get a closer look just now. Try Why? again in a moment.")
+            }
+            guard !Task.isCancelled, let self else { return }
+            self.explainTask = nil
+            // Timing and outcome only; never the text or the explanation.
+            let outcome = if case .ready = state { "ok" } else { "failed" }
+            self.log.notice("explained in \(Int((clock.now - started) / .milliseconds(1))) ms outcome=\(outcome, privacy: .public)")
+            guard self.session?.id == sessionID else { return }
+            self.interventions.setWhy(state)
+        }
+    }
+
+    /// "Just this one": drop the run and judge the draft on its own from here on.
+    func justThisOne() {
+        guard session != nil, let snapshot = latest else { return }
+        analysisTask?.cancel()
+        analysisTask = nil
+        queuedText = nil
+        session?.ignoreRun = true
+        session?.burstContext = nil
+        session?.runApplies = false
+        session?.lastAnalyzedText = nil
+        session?.lastAssessment = nil
+        session?.rewriteRequestedFor = nil
+        explainTask?.cancel()
+        explainTask = nil
+        interventions.setWhy(.idle)
+        interventions.hideAll()
+        log.notice("run dropped for this draft")
+        analyze(snapshot.text)
     }
 
     func clearComposer() {
