@@ -137,6 +137,7 @@ public final class FoundationModelsToneAnalyzer: ToneAnalyzer, @unchecked Sendab
     private static func map(_ error: LanguageModelSession.GenerationError) -> ToneAnalyzerError {
         switch error {
         case .guardrailViolation, .refusal: return .declined
+        case .rateLimited, .concurrentRequests: return .busy
         default: return .badResponse(String(describing: error))
         }
     }

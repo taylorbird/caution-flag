@@ -52,7 +52,7 @@ fi
 
 # --- Build, notarize, staple ----------------------------------------------
 step "Building"
-MARKETING_VERSION="$VERSION" "$ROOT/scripts/build.sh" --no-install
+MARKETING_VERSION="$VERSION" "$ROOT/scripts/build.sh" --release
 codesign --verify --strict --deep "$BUILT"
 
 mkdir -p "$DIST"

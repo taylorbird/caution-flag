@@ -8,14 +8,14 @@
 
 It watches the message box in Slack and other apps you choose, rates the tone as you type, and steps in when a draft is heated.
 
-- **Heads-up (score 4–5):** the menu bar flag turns yellow and a quiet chip above the message box says the draft might be worth a reread. It fades after a few seconds.
+- **Heads-up (score 4–5):** the menu bar flag turns blue (a racing blue flag: information, not a hazard) and a quiet blue chip above the message box says the draft might be worth a reread. It fades after a few seconds.
 - **Warm (score 6):** the same chip with a strip of hazard tape and a brighter edge, plus **Soften** to open the full panel. It fades on its own. Within one draft it only escalates, so a score wobbling between 5 and 6 doesn't flip the look.
 - **Why?:** every nudge and the panel have a **Why?** button. Only when tapped, it asks the on-device model which words drove the rating, how they might land, and for one small tweak. Quoted phrases are checked against your draft, and the answer stays in memory only.
 - **Hot (7+):** the flag turns red, the screen dims around your message box, and a caution-tape panel shows why, a calmer rewrite with a Copy button, your own note to yourself, and three choices: **Take 5** (a breathing timer), **Save for later**, or **I'm fine**. It appears next to the message box, or centered on the screen if you prefer (Settings).
 - **Quick runs:** several short messages sent back to back in the same conversation are read together with the next draft, since a run of calm-looking one-liners can add up to a defensive reply. The run only gets the credit when it reads clearly hotter (1+ point) than the draft alone; the nudge then says "Read with your last N messages" and offers **Just this one** to judge the draft on its own. Settings › Speed check sets what counts as quick (default: 4+ messages under 80 characters, each within 20 s; Watchful restores the original 60 s / 200 characters / 3 messages).
 - **Not heated:** if a nudge misreads a message, tap **Not heated** to keep it for later tuning. It doesn't change how the app behaves.
 
-When Caution Flag is watching, the menu bar pennant is green; it turns yellow or red for heated drafts, like racing flags. A plain silhouette means it's off (snoozed, in quiet hours, or watching no apps).
+When Caution Flag is watching, the menu bar pennant is green; it turns blue for a heads-up and yellow or red for heated drafts, like racing flags. A plain silhouette means it's off (snoozed, in quiet hours, or watching no apps).
 
 Requires macOS 15+. Apple's on-device model needs macOS 26+ with Apple Intelligence on; otherwise use Ollama.
 
@@ -29,16 +29,31 @@ The app then keeps itself up to date (Sparkle): it checks once a day and install
 
 ## Build and run
 
+Two builds live side by side, with separate bundle IDs, settings and Accessibility grants:
+
+| | Live | Dev |
+|---|---|---|
+| App | `/Applications/Caution Flag.app` | `/Applications/Caution Flag Dev.app` |
+| Bundle ID | `com.tbird.cautionflag` | `com.tbird.cautionflag.dev` |
+| Comes from | Homebrew, then updated by Sparkle | `scripts/build.sh` |
+| Menu bar | pennant | pennant with an orange dot; no update checks |
+
+Only one runs at a time, since both would nudge the same draft.
+
 ```sh
 brew install xcodegen          # once
-scripts/build.sh --run         # builds Release, installs to /Applications/Caution Flag.app, launches it
+scripts/build.sh               # build Dev, quit live, install + launch Dev
+scripts/use-live.sh            # quit Dev, relaunch live
+scripts/build.sh --release     # build the live identity only (release.sh uses this)
 ```
+
+The Dev build needs its own Accessibility grant the first time, and copies the live settings on its first install. Both share `~/Library/Application Support/Caution Flag/` (saved drafts and Not heated reports).
 
 The project is generated from `project.yml`, so don't edit `CautionFlag.xcodeproj` by hand. Every build is signed with the Developer ID Application identity (team `UFCDGSKCXB`) with the hardened runtime, so the Accessibility grant survives rebuilds and releases can be notarized. With ad-hoc signing, macOS would forget the grant every build.
 
 Always run the app from `/Applications`: on macOS 27, Bartender can't see the menu bar item of an app run from anywhere else. `build.sh` installs there.
 
-The build number is the git commit count. The icon is an Icon Composer package (`assets/icon/AppIcon.icon`) whose layers come from `swift scripts/render-icon.swift`; the source geometry is `assets/icon/caution-flag.svg`.
+The build number is the git commit count plus 100 (the offset keeps builds above 0.1.3's build 26 after the history rewrite). The icon is an Icon Composer package (`assets/icon/AppIcon.icon`) whose layers come from `swift scripts/render-icon.swift`; the source geometry is `assets/icon/caution-flag.svg`.
 
 ## Release
 

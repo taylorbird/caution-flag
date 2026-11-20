@@ -60,7 +60,8 @@ final class StatusItemController: ObservableObject {
         // On: racing flag colors, so "watching" reads at a glance.
         switch level {
         case nil, .calm?: return Self.pennant(color: .systemGreen)
-        case .headsUp?, .warm?: return Self.pennant(color: .systemYellow)
+        case .headsUp?: return Self.pennant(color: .systemBlue)
+        case .warm?: return Self.pennant(color: .systemYellow)
         case .hot?: return Self.pennant(color: .systemRed)
         }
     }
@@ -81,9 +82,14 @@ final class StatusItemController: ObservableObject {
             (color ?? .black).setStroke()
             flag.fill()
             flag.stroke()
+            if BuildFlavor.isDev {
+                // Dev build: an orange dot in the corner, so it's never mistaken for live.
+                NSColor.systemOrange.setFill()
+                NSBezierPath(ovalIn: NSRect(x: 11.5, y: 11.5, width: 6, height: 6)).fill()
+            }
             return true
         }
-        image.isTemplate = color == nil
+        image.isTemplate = color == nil && !BuildFlavor.isDev
         image.accessibilityDescription = "Caution Flag"
         return image
     }
@@ -97,6 +103,9 @@ struct StatusMenu: View {
     var body: some View {
         Text(status.headline)
         Text("Model: \(analyzers.statusText)")
+        if BuildFlavor.isDev {
+            Text("Dev build \(BuildFlavor.versionLine) · no auto-updates")
+        }
         Divider()
         if status.permissionMissing {
             Button("Grant Accessibility Permission…") { status.actions?.showOnboarding() }
@@ -107,7 +116,9 @@ struct StatusMenu: View {
         Button("Settings…") { status.actions?.showSettings() }
             .keyboardShortcut(",")
         Button("Setup Guide…") { status.actions?.showOnboarding() }
-        Button("Check for Updates…") { status.actions?.checkForUpdates() }
+        if !BuildFlavor.isDev {
+            Button("Check for Updates…") { status.actions?.checkForUpdates() }
+        }
         Divider()
         Toggle("Open at Login", isOn: Binding(
             get: { login.isEnabled || login.needsApproval },
@@ -117,7 +128,7 @@ struct StatusMenu: View {
             Button("Allow in Login Items…") { login.openLoginItemsSettings() }
         }
         Divider()
-        Button("Quit Caution Flag") { status.actions?.quit() }
+        Button(BuildFlavor.isDev ? "Quit Caution Flag Dev" : "Quit Caution Flag") { status.actions?.quit() }
             .keyboardShortcut("q")
     }
 }

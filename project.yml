@@ -45,8 +45,14 @@ targets:
         SUAutomaticallyUpdate: true
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.tbird.cautionflag
-        PRODUCT_NAME: Caution Flag
+        # scripts/build.sh sets CF_APP_NAME / CF_BUNDLE_ID for the Dev identity
+        # ("Caution Flag Dev", com.tbird.cautionflag.dev). Only this target reads
+        # them, unlike a PRODUCT_NAME override, which would hit the packages too.
+        CF_APP_NAME: Caution Flag
+        CF_BUNDLE_ID: com.tbird.cautionflag
+        PRODUCT_BUNDLE_IDENTIFIER: $(CF_BUNDLE_ID)
+        PRODUCT_NAME: $(CF_APP_NAME)
+        PRODUCT_MODULE_NAME: Caution_Flag
         MARKETING_VERSION: "0.1.4"
         # scripts/build.sh overrides this with the git commit count.
         CURRENT_PROJECT_VERSION: "1"

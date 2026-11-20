@@ -34,6 +34,10 @@ public enum SampleMessages {
         "I think we might be misaligned on scope. Want to hop on a quick call to sort it out?",
         "No rush on this, whenever you have a minute this week.",
         "Ok, I'll handle the deploy and ping you when it's done.",
+        // Paraphrased from Not heated reports (2026-11-20); the model has rated these 4–6.
+        "oh, my mistake, I figured it was a caching issue. I read the log and thought those were changes you'd pushed.",
+        "quick client question: I want a saved list of people I message a lot. It's just for me, nobody needs to join a group, more like a contact list.",
+        "yep, the vendor exclusion is already in. Only open item is the question in the ticket title.",
     ].map { SampleMessage(text: $0, expectation: .calm) }
 
     public static let heatedObvious: [SampleMessage] = [

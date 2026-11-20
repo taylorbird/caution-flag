@@ -25,6 +25,8 @@ public enum ToneAnalyzerError: Error, Equatable, CustomStringConvertible {
     case badResponse(String)
     case timeout
     case notLoopback(String)
+    /// The model is handling another request or rate-limiting us; try again shortly.
+    case busy
 
     public var description: String {
         switch self {
@@ -33,6 +35,19 @@ public enum ToneAnalyzerError: Error, Equatable, CustomStringConvertible {
         case .badResponse(let why): "Unexpected response: \(why)"
         case .timeout: "The model took too long."
         case .notLoopback(let host): "Refusing to send text to non-local host \(host)."
+        case .busy: "The model is busy."
+        }
+    }
+
+    /// A short label safe for logs: the error's kind, never any text it carries.
+    public var kind: String {
+        switch self {
+        case .unavailable: "unavailable"
+        case .declined: "declined"
+        case .badResponse: "bad"
+        case .timeout: "timeout"
+        case .notLoopback: "notLoopback"
+        case .busy: "busy"
         }
     }
 }

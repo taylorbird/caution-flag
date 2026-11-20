@@ -12,7 +12,7 @@ final class AppController {
     lazy var analyzers = AnalyzerProvider(settings: settings)
     let capture = TextCaptureService()
     let windows = WindowManager()
-    let updates = UpdateController(enabled: UserDefaults.standard.string(forKey: "demo") == nil)
+    let updates = UpdateController(enabled: UserDefaults.standard.string(forKey: "demo") == nil && !BuildFlavor.isDev)
     lazy var interventions = InterventionController(settings: settings)
     lazy var statusItem = StatusItemController(settings: settings, analyzers: analyzers, actions: self)
     lazy var coordinator = DraftCoordinator(

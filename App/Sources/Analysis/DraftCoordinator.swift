@@ -39,6 +39,10 @@ final class DraftCoordinator {
         var runApplies = false
         /// "Just this one": judge this draft on its own for the rest of it.
         var ignoreRun = false
+        /// The last score backed by a model result for this draft (score-4 hysteresis).
+        var lastModelScore: Double?
+        /// The current assessment is a lone 4 being held back; don't re-present it.
+        var headsUpHeld = false
     }
 
     static let modelTimeout: Double = 15
@@ -116,6 +120,8 @@ final class DraftCoordinator {
             session = Session(pid: snapshot.pid)
             explainTask?.cancel()
             explainTask = nil
+            // Text queued behind a Why? belongs to the old draft.
+            queuedText = nil
             interventions.setWhy(.idle)
             // A new draft: get the model loaded while the first words are typed.
             analyzers.currentAnalyzer()?.prepare()
@@ -232,7 +238,10 @@ final class DraftCoordinator {
             apply(provisional, text: text)
         }
 
-        if analysisTask == nil {
+        // While Why? is asking the model, typing scores wait, so the tap isn't competing
+        // with a stream of scores (0.1.4's Why? failed in ~200 ms mid-typing: busy or
+        // rate-limited; the logged failure kind will say which).
+        if analysisTask == nil, explainTask == nil {
             startModelScore(text)
         } else {
             queuedText = text
@@ -281,10 +290,23 @@ final class DraftCoordinator {
                 self.interventions.updateRewrite(nil)
             }
             self.session?.runApplies = runApplies
-            self.apply(assessment, text: text)
+            // Presentation gates for the draft itself (a run that earned the credit is
+            // exempt). Only model-backed scores; the keyword checks keep their verdicts.
+            let draftSignals = self.scorer.evaluate(text)
+            let modelBacked = first.result != nil
+            if !runApplies, modelBacked {
+                assessment = DraftGates.capShortDraft(assessment, draft: text, heuristic: draftSignals)
+            }
+            let previous = self.session?.lastModelScore
+            if modelBacked { self.session?.lastModelScore = assessment.score }
+            let hold = assessment.level == .headsUp && modelBacked && !runApplies
+                && draftSignals.signals.isEmpty && self.explainTask == nil
+                && !DraftGates.showsHeadsUp(score: assessment.score, previousModelScore: previous)
+            self.apply(assessment, text: text, holdHeadsUp: hold)
 
-            // Catch up to whatever was typed meanwhile.
-            if let next = self.queuedText {
+            // Catch up to whatever was typed meanwhile (unless Why? is now running;
+            // it picks the queue back up when it finishes).
+            if self.explainTask == nil, let next = self.queuedText {
                 self.queuedText = nil
                 if next != text { self.startModelScore(next) }
             }
@@ -294,7 +316,9 @@ final class DraftCoordinator {
     /// One model call. Nil only when cancelled.
     private func score(_ text: String, with analyzer: ToneAnalyzer) async -> (result: ToneResult?, declined: Bool)? {
         do {
-            let result = try await withTimeout(Self.modelTimeout) { try await analyzer.analyze(text) }
+            let result = try await withTimeout(Self.modelTimeout) {
+                try await Self.retryingBusy { try await analyzer.analyze(text) }
+            }
             analyzers.noteSuccess()
             return (result, false)
         } catch ToneAnalyzerError.declined {
@@ -302,16 +326,41 @@ final class DraftCoordinator {
         } catch is CancellationError {
             return nil
         } catch {
-            analyzers.noteFailure(error)
+            // Busy is momentary; don't show the model as failing in the menu for it.
+            if (error as? ToneAnalyzerError) != .busy { analyzers.noteFailure(error) }
+            // The error's kind only; never text.
+            let kind = (error as? ToneAnalyzerError)?.kind ?? "other"
+            log.notice("model failed kind=\(kind, privacy: .public)")
             return (nil, false)
         }
     }
 
-    private func apply(_ assessment: ToneAssessment, text: String) {
+    /// `holdHeadsUp`: a lone score of 4 is recorded but not shown (see DraftGates).
+    /// Busy or rate-limited: back off (0.8 s, then 1.6 s) instead of dropping the score.
+    /// Without this, about a third of 0.1.4's typing scores silently fell back to the
+    /// keyword checks. Scores stay one at a time, so backing off here also paces them.
+    nonisolated private static func retryingBusy<T: Sendable>(_ call: @escaping @Sendable () async throws -> T) async throws -> T {
+        var delay = 0.8
+        for _ in 0..<2 {
+            do { return try await call() } catch ToneAnalyzerError.busy {
+                try await Task.sleep(for: .seconds(delay))
+                delay *= 2
+            }
+        }
+        return try await call()
+    }
+
+    private func apply(_ assessment: ToneAssessment, text: String, holdHeadsUp: Bool = false) {
         guard session != nil, let snapshot = latest else { return }
         // Scores and timing only; never the text.
-        log.notice("assessed score=\(assessment.score, format: .fixed(precision: 1)) level=\(assessment.level.name, privacy: .public) runContext=\(self.session?.burstContext?.count ?? 0) runApplies=\(self.session?.runApplies == true)")
+        log.notice("assessed score=\(assessment.score, format: .fixed(precision: 1)) level=\(assessment.level.name, privacy: .public) runContext=\(self.session?.burstContext?.count ?? 0) runApplies=\(self.session?.runApplies == true) held=\(holdHeadsUp)")
         session?.lastAssessment = assessment
+        session?.headsUpHeld = holdHeadsUp
+        if holdHeadsUp {
+            status.level = .calm
+            interventions.hideAll()
+            return
+        }
         status.level = assessment.level
 
         // Heads-up counts too: the "rough stretch" rule kept its original 4+ threshold.
@@ -324,7 +373,7 @@ final class DraftCoordinator {
 
     private func present(_ assessment: ToneAssessment, for snapshot: DraftSnapshot) {
         guard let session else { return }
-        if session.dismissed || assessment.level == .calm {
+        if session.dismissed || assessment.level == .calm || session.headsUpHeld {
             interventions.hideAll()
             return
         }
@@ -358,6 +407,8 @@ final class DraftCoordinator {
             self.rewriteTask = nil
             self.log.notice("rewrite in \(Int((clock.now - started) / .milliseconds(1))) ms")
             guard self.session != nil else { return }
+            // A failed rewrite (busy, timeout) may be asked for again on the next score.
+            if rewrite == nil { self.session?.rewriteRequestedFor = nil }
             self.session?.lastAssessment?.rewrite = rewrite
             self.interventions.updateRewrite(rewrite)
         }
@@ -428,29 +479,58 @@ extension DraftCoordinator: InterventionActions {
         let target = presentedText(for: snapshot.text)
         let sessionID = session.id
         interventions.setWhy(.loading)
+        let inFlight = analysisTask
         explainTask = Task { [weak self] in
             let clock = ContinuousClock()
             let started = clock.now
-            let state: WhyState
-            do {
-                let why = try await withTimeout(Self.modelTimeout) { try await analyzer.explain(target, assessment: assessment) }
-                state = .ready(why)
-            } catch is CancellationError {
-                return
-            } catch ToneAnalyzerError.declined {
-                state = .failed("Apple's on-device safety filter wouldn't look at this one. A single word can trip it, so it doesn't mean the draft is heated.")
-            } catch ToneAnalyzerError.timeout {
-                state = .failed("That took too long. Try Why? again in a moment.")
-            } catch {
-                state = .failed("Couldn't get a closer look just now. Try Why? again in a moment.")
+            // Let a typing score already in flight finish first; new ones wait for us.
+            await inFlight?.value
+            var state = WhyState.failed("Couldn't get a closer look just now. Try Why? again in a moment.")
+            var attempts = 0
+            retry: while attempts < 3 {
+                attempts += 1
+                do {
+                    let why = try await withTimeout(Self.modelTimeout) { try await analyzer.explain(target, assessment: assessment) }
+                    state = .ready(why)
+                    break retry
+                } catch ToneAnalyzerError.busy {
+                    self?.log.notice("explain failed kind=busy attempt=\(attempts)")
+                    guard attempts < 3 else { break retry }
+                    // Busy or rate-limited: back off and try again.
+                    try? await Task.sleep(for: .milliseconds(700 * attempts))
+                    if Task.isCancelled { return }
+                    continue retry
+                } catch is CancellationError {
+                    return
+                } catch {
+                    state = Self.whyFailure(error)
+                    if let e = error as? ToneAnalyzerError { self?.log.notice("explain failed kind=\(e.kind, privacy: .public)") }
+                    break retry
+                }
             }
             guard !Task.isCancelled, let self else { return }
             self.explainTask = nil
             // Timing and outcome only; never the text or the explanation.
             let outcome = if case .ready = state { "ok" } else { "failed" }
-            self.log.notice("explained in \(Int((clock.now - started) / .milliseconds(1))) ms outcome=\(outcome, privacy: .public)")
+            self.log.notice("explained in \(Int((clock.now - started) / .milliseconds(1))) ms outcome=\(outcome, privacy: .public) attempts=\(attempts)")
+            // Scores that waited while Why? ran pick up now.
+            if self.analysisTask == nil, let next = self.queuedText {
+                self.queuedText = nil
+                self.startModelScore(next)
+            }
             guard self.session?.id == sessionID else { return }
             self.interventions.setWhy(state)
+        }
+    }
+
+    private static func whyFailure(_ error: Error) -> WhyState {
+        switch error {
+        case ToneAnalyzerError.declined:
+            .failed("Apple's on-device safety filter wouldn't look at this one. A single word can trip it, so it doesn't mean the draft is heated.")
+        case ToneAnalyzerError.timeout:
+            .failed("That took too long. Try Why? again in a moment.")
+        default:
+            .failed("Couldn't get a closer look just now. Try Why? again in a moment.")
         }
     }
 
