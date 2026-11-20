@@ -53,7 +53,7 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: $(CF_BUNDLE_ID)
         PRODUCT_NAME: $(CF_APP_NAME)
         PRODUCT_MODULE_NAME: Caution_Flag
-        MARKETING_VERSION: "0.1.4"
+        MARKETING_VERSION: "0.1.5"
         # scripts/build.sh overrides this with the git commit count.
         CURRENT_PROJECT_VERSION: "1"
         SWIFT_VERSION: "5.0"
