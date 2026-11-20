@@ -39,6 +39,19 @@ private struct GeneralSettings: View {
                     Text("Several short messages sent back to back can add up to more than any one of them. Caution Flag keeps the last few in memory for a couple of minutes, never on disk, and reads them together with your next draft.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
+                VStack(alignment: .leading) {
+                    Picker("Show the heated-draft panel", selection: $settings.panelPlacement) {
+                        ForEach(SettingsStore.PanelPlacement.allCases) { Text($0.label).tag($0) }
+                    }
+                    Toggle("Dim the screen for heated drafts", isOn: $settings.dimForHot)
+                    Text("When a draft is running hot, everything but your message and the panel fades back a little, so the moment is hard to miss.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                VStack(alignment: .leading) {
+                    Toggle("Animate the panel even with Reduce Motion on", isOn: $settings.animateDespiteReduceMotion)
+                    Text("The flag waves and the tape rolls. Normally this follows Reduce Motion in System Settings.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
             }
             Section {
                 HStack {

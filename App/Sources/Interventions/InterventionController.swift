@@ -45,6 +45,8 @@ final class InterventionController {
 
     private let panelModel = PanelModel()
     private var panel: FloatingPanel<HotPanelView>?
+    private lazy var dimmer = DimmingWindow()
+    private let motion = MotionClock()
 
     private var breathing: FloatingPanel<BreathingView>?
     private var anchor: CGRect?
@@ -66,7 +68,7 @@ final class InterventionController {
 
     func showPill(for assessment: ToneAssessment, anchor axFrame: CGRect?, burst: Bool = false) {
         updateAnchor(axFrame)
-        panel?.fadeOut()
+        hidePanel()
         if pill?.isVisible != true || pillMessage == nil || pillIsBurst != burst {
             pillMessage = burst ? burstWarmPhrases.next() : warmPhrases.next()
             pillIsBurst = burst
@@ -118,6 +120,7 @@ final class InterventionController {
         if panel == nil {
             panel = FloatingPanel(rootView: HotPanelView(
                 model: panelModel,
+                clock: motion,
                 onCopy: { [weak self] text in self?.copy(text) },
                 onTakeFive: { [weak self] in self?.actions?.takeFive() },
                 onSave: { [weak self] in
@@ -132,8 +135,23 @@ final class InterventionController {
                 onDismiss: { [weak self] in self?.actions?.dismissForThisDraft() }
             ))
         }
-        if isNew { panel?.position(above: anchor, alignment: .leading) }
+        if isNew {
+            switch settings.panelPlacement {
+            case .nearMessage: panel?.position(above: anchor, alignment: .leading)
+            case .center: panel?.centerOnScreen(near: anchor)
+            }
+        }
         panel?.fadeIn()
+        if MotionClock.shouldAnimate(override: settings.animateDespiteReduceMotion) {
+            motion.start()
+        } else {
+            motion.stop()
+        }
+        if settings.dimForHot {
+            dimmer.show(around: anchor)
+        } else {
+            dimmer.hide()
+        }
     }
 
     func setRewriteLoading() {
@@ -164,7 +182,7 @@ final class InterventionController {
     private func notHeatedFromPanel() {
         guard actions?.markNotHeated() == true else { return }
         panelModel.notedMisread = true
-        hideSoon { [weak self] in self?.panel?.fadeOut() }
+        hideSoon { [weak self] in self?.hidePanel() }
     }
 
     private func hideSoon(_ hide: @escaping @MainActor () -> Void) {
@@ -194,9 +212,15 @@ final class InterventionController {
 
     // MARK: - Hiding
 
+    private func hidePanel() {
+        panel?.fadeOut()
+        dimmer.hide()
+        motion.stop()
+    }
+
     func hideAll() {
         pillHideTask?.cancel()
         pill?.fadeOut()
-        panel?.fadeOut()
+        hidePanel()
     }
 }

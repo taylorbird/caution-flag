@@ -10,12 +10,21 @@ public enum Phrasings {
         "Gentle flag: this could come across hot.",
     ]
 
+    /// Headlines for the hot panel. One line each (about 24 characters at most), so
+    /// the header never wraps. Racing-flavored to match the caution-flag look.
     public static let hot: [String] = [
-        "Let's take a breath before this one goes out.",
-        "This one's carrying a lot. Want a minute with it?",
-        "Strong feelings here, and that's okay. Pause first?",
-        "You can still send it. Maybe just not yet?",
-        "Worth sitting with this one for a moment.",
+        "Yellow flag. Ease off.",
+        "Box, box, box.",
+        "Lift and coast.",
+        "Pit stop, maybe?",
+        "Hold your line.",
+        "Cool-down lap first?",
+        "Easy on the throttle.",
+        "Brakes before send.",
+        "Spicy one, champ.",
+        "Future you says hi.",
+        "Sleep on it?",
+        "Draft is running hot.",
     ]
 
     /// For a run of quick messages that adds up to more than any one of them.
@@ -25,10 +34,12 @@ public enum Phrasings {
         "Quick-fire messages can stack up. One message instead?",
     ]
 
+    /// Hot-panel headlines for a quick run of messages; one line each, like `hot`.
     public static let burstHot: [String] = [
-        "These quick messages are adding up. Breathe before the next one?",
-        "A lot is landing fast here. Want a minute first?",
-        "That run of messages carries some heat together. Pause?",
+        "Rapid fire. Pit stop?",
+        "That's a quick run.",
+        "Lots landing fast.",
+        "Stacking up fast.",
     ]
 
     public static func reason(for category: ToneCategory) -> String {
