@@ -206,10 +206,19 @@ final class TextCaptureService: @unchecked Sendable {
         // Only editable text. A read-only text area (e.g. a Messages bubble that took
         // focus) carries other people's words; a Not heated report showed one being
         // rated as the draft. Composers in Slack, Echo and Messages report settable.
-        if Self.textRoles.contains(role) { return !Self.isReadOnly(element) }
+        if Self.textRoles.contains(role) {
+            guard !Self.isReadOnly(element) else {
+                // Role and pid only, never text: makes a composer that stops capturing visible.
+                Self.readOnlyLog.debug("skipped read-only \(role, privacy: .public) pid=\(AX.pid(element) ?? 0)")
+                return false
+            }
+            return true
+        }
         // contenteditable regions sometimes show up as groups with a settable string value.
         return role == kAXGroupRole && AX.isValueSettable(element) && AX.string(element, kAXValueAttribute) != nil
     }
+
+    private static let readOnlyLog = Logger(subsystem: "com.tbird.cautionflag", category: "capture")
 
     /// True only when the app answers that the value can't be set; unknown counts as editable.
     private static func isReadOnly(_ element: AXUIElement) -> Bool {

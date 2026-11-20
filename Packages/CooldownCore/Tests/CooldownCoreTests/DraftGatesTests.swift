@@ -26,6 +26,13 @@ struct DraftGatesTests {
         #expect(a.level == .hot)
     }
 
+    @Test func declinedDraftsStayWarm() {
+        let draft = "short one"
+        let declined = ScoreCombiner().combine(model: nil, modelDeclined: true,
+                                               heuristic: scorer.evaluate(draft), recentHeatedDrafts: 0)
+        #expect(DraftGates.capShortDraft(declined, draft: draft, heuristic: scorer.evaluate(draft)).level == .warm)
+    }
+
     @Test func longDraftsAreNotCapped() {
         let draft = String(repeating: "a calm sentence that keeps going ", count: 3)
         let a = DraftGates.capShortDraft(model(6), draft: draft, heuristic: scorer.evaluate(draft))

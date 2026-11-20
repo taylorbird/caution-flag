@@ -8,11 +8,13 @@ public enum DraftGates {
 
     /// A short draft with no heuristic signal tops out at heads-up: half a sentence
     /// ending in "so" read as warm to the model while still being typed. Clear signals
-    /// (insults, profanity, shouting, blame phrases) are exempt and keep their level.
+    /// (insults, profanity, shouting, blame phrases) are exempt and keep their level, and
+    /// so are drafts the model declined (deliberately warm; see ScoreCombiner).
     public static func capShortDraft(_ assessment: ToneAssessment, draft: String,
                                      heuristic: HeuristicReport) -> ToneAssessment {
         let length = draft.trimmingCharacters(in: .whitespacesAndNewlines).count
         guard (length < shortDraftLimit), heuristic.signals.isEmpty, (assessment.level > .headsUp) else { return assessment }
+        if case .modelDeclined = assessment.source { return assessment }
         return ToneAssessment(score: min(assessment.score, HeatLevel.warmThreshold - 0.1),
                               category: assessment.category, reason: assessment.reason,
                               rewrite: nil, source: assessment.source)

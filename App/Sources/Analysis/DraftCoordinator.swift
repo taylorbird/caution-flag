@@ -39,8 +39,10 @@ final class DraftCoordinator {
         var runApplies = false
         /// "Just this one": judge this draft on its own for the rest of it.
         var ignoreRun = false
-        /// The last model-based score for this draft, for the score-4 hysteresis.
+        /// The last score backed by a model result for this draft (score-4 hysteresis).
         var lastModelScore: Double?
+        /// The current assessment is a lone 4 being held back; don't re-present it.
+        var headsUpHeld = false
     }
 
     static let modelTimeout: Double = 15
@@ -288,13 +290,17 @@ final class DraftCoordinator {
                 self.interventions.updateRewrite(nil)
             }
             self.session?.runApplies = runApplies
-            // Presentation gates for the draft itself (a run that earned the credit is exempt).
-            if !runApplies {
-                assessment = DraftGates.capShortDraft(assessment, draft: text, heuristic: self.scorer.evaluate(text))
+            // Presentation gates for the draft itself (a run that earned the credit is
+            // exempt). Only model-backed scores; the keyword checks keep their verdicts.
+            let draftSignals = self.scorer.evaluate(text)
+            let modelBacked = first.result != nil
+            if !runApplies, modelBacked {
+                assessment = DraftGates.capShortDraft(assessment, draft: text, heuristic: draftSignals)
             }
             let previous = self.session?.lastModelScore
-            self.session?.lastModelScore = assessment.score
-            let hold = assessment.level == .headsUp && first.result != nil
+            if modelBacked { self.session?.lastModelScore = assessment.score }
+            let hold = assessment.level == .headsUp && modelBacked && !runApplies
+                && draftSignals.signals.isEmpty && self.explainTask == nil
                 && !DraftGates.showsHeadsUp(score: assessment.score, previousModelScore: previous)
             self.apply(assessment, text: text, holdHeadsUp: hold)
 
@@ -349,6 +355,7 @@ final class DraftCoordinator {
         // Scores and timing only; never the text.
         log.notice("assessed score=\(assessment.score, format: .fixed(precision: 1)) level=\(assessment.level.name, privacy: .public) runContext=\(self.session?.burstContext?.count ?? 0) runApplies=\(self.session?.runApplies == true) held=\(holdHeadsUp)")
         session?.lastAssessment = assessment
+        session?.headsUpHeld = holdHeadsUp
         if holdHeadsUp {
             status.level = .calm
             interventions.hideAll()
@@ -366,7 +373,7 @@ final class DraftCoordinator {
 
     private func present(_ assessment: ToneAssessment, for snapshot: DraftSnapshot) {
         guard let session else { return }
-        if session.dismissed || assessment.level == .calm {
+        if session.dismissed || assessment.level == .calm || session.headsUpHeld {
             interventions.hideAll()
             return
         }
