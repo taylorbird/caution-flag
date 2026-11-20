@@ -30,20 +30,20 @@ final class DraftCoordinator {
         var lastAnalyzedText: String?
         var lastAssessment: ToneAssessment?
         var rewriteRequestedFor: String?
-        var nextLengthTrigger = DraftCoordinator.lengthStep
         /// Earlier messages in a quick run, scored together with this draft.
         var burstContext: [String]?
     }
 
-    static let debounce: Duration = .milliseconds(800)
-    /// Analyze immediately each time the draft grows by this many characters.
-    nonisolated static let lengthStep = 280
     static let modelTimeout: Double = 15
 
     private var session: Session?
     private var latest: DraftSnapshot?
-    private var debounceTask: Task<Void, Never>?
+    /// The one model score in flight. Scoring runs continuously while typing: a new
+    /// keystroke never cancels it; the newest text waits in `queuedText` and is scored
+    /// as soon as the model is free, so a nudge can land before the user pauses.
     private var analysisTask: Task<Void, Never>?
+    private var queuedText: String?
+    private var rewriteTask: Task<Void, Never>?
 
     init(settings: SettingsStore, analyzers: AnalyzerProvider, interventions: InterventionController,
          status: StatusItemController, capture: TextCaptureService, drafts: DraftStore,
@@ -102,8 +102,11 @@ final class DraftCoordinator {
             endSession()
             return
         }
-        if session == nil || session?.pid != snapshot.pid {
+        if session == nil || session?.pid != snapshot.pid
+            || (samePid && previous.map { Self.isReplacement(of: $0.text, by: snapshot.text) } == true) {
             session = Session(pid: snapshot.pid)
+            // A new draft: get the model loaded while the first words are typed.
+            analyzers.currentAnalyzer()?.prepare()
         }
 
         if previous?.text == snapshot.text {
@@ -116,7 +119,19 @@ final class DraftCoordinator {
         }
 
         interventions.updateAnchor(snapshot.frame)
-        schedule(snapshot.text)
+        analyze(snapshot.text)
+    }
+
+    /// Select-all and typing over a draft never empties the field, so it would otherwise
+    /// count as the same draft and inherit "dismissed". A change that, in one step,
+    /// shares less than the first two characters with a draft of some length is a new one.
+    /// Deleting with Backspace keeps the start intact, so it stays the same draft.
+    nonisolated static func isReplacement(of old: String, by new: String) -> Bool {
+        let old = old.trimmingCharacters(in: .whitespacesAndNewlines)
+        let new = new.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard old.count >= 8, !new.isEmpty else { return false }
+        let shared = zip(old, new).prefix { $0 == $1 }.count
+        return shared < 2
     }
 
     func refreshSuppression() {
@@ -160,28 +175,16 @@ final class DraftCoordinator {
 
     // MARK: - Analysis
 
-    private func schedule(_ text: String) {
-        debounceTask?.cancel()
-        guard var current = session else { return }
-        if text.count >= current.nextLengthTrigger {
-            current.nextLengthTrigger = text.count + Self.lengthStep
-            session = current
-            analyze(text)
-            return
-        }
-        debounceTask = Task { [weak self] in
-            try? await Task.sleep(for: Self.debounce)
-            guard !Task.isCancelled else { return }
-            self?.analyze(text)
-        }
-    }
-
+    /// Runs on every change to the draft. The heuristic verdict is instant; the model
+    /// score starts now if the model is free, otherwise right after the current one.
     private func analyze(_ text: String) {
         guard session?.lastAnalyzedText != text else { return }
         session?.lastAnalyzedText = text
-        analysisTask?.cancel()
 
-        session?.burstContext = burstContext()
+        // Read first: assigning through `session?.` while burstContext() reads `session`
+        // is an exclusivity conflict, which aborts the app.
+        let context = burstContext()
+        session?.burstContext = context
         let scored = scoredText(for: text)
         let isBurst = session?.burstContext != nil
         let report = scorer.evaluate(scored)
@@ -189,7 +192,7 @@ final class DraftCoordinator {
         let recent = heatTracker.count()
 
         // A run of short messages can each look obviously calm, so always ask the model.
-        guard isBurst || !report.isObviouslyCalm, let analyzer = analyzers.currentAnalyzer() else {
+        guard isBurst || !report.isObviouslyCalm, analyzers.currentAnalyzer() != nil else {
             apply(combiner.combine(model: nil, heuristic: report, recentHeatedDrafts: recent), text: text)
             return
         }
@@ -200,9 +203,25 @@ final class DraftCoordinator {
             apply(provisional, text: text)
         }
 
+        if analysisTask == nil {
+            startModelScore(text)
+        } else {
+            queuedText = text
+        }
+    }
+
+    private func startModelScore(_ text: String) {
+        guard let analyzer = analyzers.currentAnalyzer() else { return }
+        let scored = scoredText(for: text)
+        let report = scorer.evaluate(scored)
+        let combiner = ScoreCombiner(sensitivity: settings.sensitivity)
+        let recent = heatTracker.count()
+
         analysisTask = Task { [weak self] in
             var result: ToneResult?
             var declined = false
+            let clock = ContinuousClock()
+            let started = clock.now
             do {
                 result = try await withTimeout(Self.modelTimeout) { try await analyzer.analyze(scored) }
                 self?.analyzers.noteSuccess()
@@ -214,11 +233,21 @@ final class DraftCoordinator {
                 self?.analyzers.noteFailure(error)
             }
             guard !Task.isCancelled, let self else { return }
+            let ms = Int((clock.now - started) / .milliseconds(1))
+            // Timing and length only; never the text.
+            self.log.notice("model scored in \(ms) ms length=\(scored.count)")
+            self.analysisTask = nil
             let assessment = combiner.combine(
                 model: result, modelName: analyzer.displayName, modelDeclined: declined,
                 heuristic: report, recentHeatedDrafts: recent
             )
             self.apply(assessment, text: text)
+
+            // Catch up to whatever was typed meanwhile.
+            if let next = self.queuedText {
+                self.queuedText = nil
+                if next != text { self.startModelScore(next) }
+            }
         }
     }
 
@@ -258,12 +287,20 @@ final class DraftCoordinator {
     private func fetchRewriteIfNeeded(for text: String) {
         // For a quick run, the calmer version gathers the whole run into one message.
         let target = scoredText(for: text)
-        guard session?.rewriteRequestedFor != target, let analyzer = analyzers.currentAnalyzer() else { return }
+        // One rewrite at a time: while typing continues under an open panel, the next
+        // score after this one finishes asks again for the newer text.
+        guard rewriteTask == nil, session?.rewriteRequestedFor != target,
+              let analyzer = analyzers.currentAnalyzer() else { return }
         session?.rewriteRequestedFor = target
-        interventions.setRewriteLoading()
-        Task { [weak self] in
+        if session?.lastAssessment?.rewrite == nil { interventions.setRewriteLoading() }
+        rewriteTask = Task { [weak self] in
+            let clock = ContinuousClock()
+            let started = clock.now
             let rewrite = try? await withTimeout(Self.modelTimeout) { try await analyzer.suggestRewrite(target) }
-            guard let self, self.latest?.text == text else { return }
+            guard !Task.isCancelled, let self else { return }
+            self.rewriteTask = nil
+            self.log.notice("rewrite in \(Int((clock.now - started) / .milliseconds(1))) ms")
+            guard self.session != nil else { return }
             self.session?.lastAssessment?.rewrite = rewrite
             self.interventions.updateRewrite(rewrite)
         }
@@ -277,8 +314,11 @@ final class DraftCoordinator {
     }
 
     private func cancelWork() {
-        debounceTask?.cancel()
         analysisTask?.cancel()
+        analysisTask = nil
+        queuedText = nil
+        rewriteTask?.cancel()
+        rewriteTask = nil
     }
 }
 

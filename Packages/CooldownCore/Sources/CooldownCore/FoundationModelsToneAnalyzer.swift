@@ -54,6 +54,12 @@ public final class FoundationModelsToneAnalyzer: ToneAnalyzer, @unchecked Sendab
         lock.withLock { spare = session }
     }
 
+    /// The system unloads the model when idle, so the spare prewarmed at launch or after
+    /// the last score may be cold by the time a new draft starts. Warm it again.
+    public func prepare() {
+        lock.withLock { spare }?.prewarm()
+    }
+
     private func takeSession() -> LanguageModelSession {
         let session = lock.withLock { () -> LanguageModelSession? in
             defer { spare = nil }

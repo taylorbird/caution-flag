@@ -86,9 +86,17 @@ step "Creating GitHub release on $TAP_REPO"
 gh release create "$TAG" "$ZIP" -R "$TAP_REPO" --title "Caution Flag $VERSION" \
   --notes "Install or upgrade: \`brew install --cask taylorbird/caution-flag/caution-flag\`"
 
-step "Updating cask"
+step "Updating cask and appcast"
 sed -i '' -E -e "s/^( *version ).*/\1\"$VERSION\"/" -e "s/^( *sha256 ).*/\1\"$SHA\"/" "$CASK"
-git -C "$TAP_DIR" commit -q -m "caution-flag $VERSION" -- Casks/caution-flag.rb
+# Sparkle feed: sign the zip with the EdDSA key in the login Keychain, then add
+# an item for this version at the top of appcast.xml on the tap.
+SIGN_UPDATE="$ROOT/.build/xcode/SourcePackages/artifacts/sparkle/Sparkle/bin/sign_update"
+SPARKLE_ATTRS=$("$SIGN_UPDATE" "$ZIP") || fail "sign_update failed (is the Sparkle key in the Keychain?)"
+BUILD_NUMBER=$(/usr/libexec/PlistBuddy -c "Print CFBundleVersion" "$BUILT/Contents/Info.plist")
+python3 -I "$ROOT/scripts/appcast-add.py" "$TAP_DIR/appcast.xml" "$VERSION" "$BUILD_NUMBER" \
+  "https://github.com/$TAP_REPO/releases/download/$TAG/CautionFlag-$VERSION.zip" "$SPARKLE_ATTRS"
+git -C "$TAP_DIR" add appcast.xml
+git -C "$TAP_DIR" commit -q -m "caution-flag $VERSION" -- Casks/caution-flag.rb appcast.xml
 git -C "$TAP_DIR" push -q
 
 step "Released $VERSION. Upgrade with: brew upgrade --cask caution-flag"

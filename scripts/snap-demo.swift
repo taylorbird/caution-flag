@@ -15,7 +15,9 @@ var windowID: Int?
 for _ in 0..<40 {
     Thread.sleep(forTimeInterval: 0.25)
     let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as? [[String: Any]] ?? []
+    // Highest layer first: the panel, not the dimming veil beneath it.
     let mine = list.filter { ($0[kCGWindowOwnerPID as String] as? Int32) == app.processIdentifier }
+        .sorted { ($0[kCGWindowLayer as String] as? Int ?? 0) > ($1[kCGWindowLayer as String] as? Int ?? 0) }
     if let w = mine.first(where: { (($0[kCGWindowBounds as String] as? [String: Any])?["Height"] as? Double ?? 0) > 30 }) {
         windowID = w[kCGWindowNumber as String] as? Int
         break

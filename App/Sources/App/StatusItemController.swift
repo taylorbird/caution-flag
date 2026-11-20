@@ -6,6 +6,7 @@ import SwiftUI
 protocol StatusItemActions: AnyObject {
     func showSettings()
     func showOnboarding()
+    func checkForUpdates()
     func showDrafts()
     func showMisreads()
     func toggleSnooze()
@@ -106,6 +107,7 @@ struct StatusMenu: View {
         Button("Settings…") { status.actions?.showSettings() }
             .keyboardShortcut(",")
         Button("Setup Guide…") { status.actions?.showOnboarding() }
+        Button("Check for Updates…") { status.actions?.checkForUpdates() }
         Divider()
         Toggle("Open at Login", isOn: Binding(
             get: { login.isEnabled || login.needsApproval },

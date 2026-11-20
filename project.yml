@@ -7,6 +7,11 @@ options:
 packages:
   CooldownCore:
     path: Packages/CooldownCore
+  # In-app updates. The feed (appcast.xml) lives on the public tap repo, next to
+  # the release zips; scripts/release.sh signs each zip and adds its entry.
+  Sparkle:
+    url: https://github.com/sparkle-project/Sparkle
+    from: "2.7.0"
 targets:
   CautionFlag:
     type: application
@@ -19,6 +24,8 @@ targets:
     dependencies:
       - package: CooldownCore
         product: CooldownCore
+      - package: Sparkle
+        product: Sparkle
     info:
       path: App/Info.plist
       properties:
@@ -31,6 +38,11 @@ targets:
         LSMinimumSystemVersion: "15.0"
         LSUIElement: true
         LSApplicationCategoryType: public.app-category.productivity
+        SUFeedURL: https://raw.githubusercontent.com/taylorbird/homebrew-caution-flag/main/appcast.xml
+        # EdDSA public key; the private half is in the login Keychain (Sparkle generate_keys).
+        SUPublicEDKey: jhlvwQpvD+frkGmqb05Fki4BcFydq5C4qUfjRtpquiw=
+        SUEnableAutomaticChecks: true
+        SUAutomaticallyUpdate: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.tbird.cautionflag

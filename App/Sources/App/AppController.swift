@@ -12,6 +12,7 @@ final class AppController {
     lazy var analyzers = AnalyzerProvider(settings: settings)
     let capture = TextCaptureService()
     let windows = WindowManager()
+    let updates = UpdateController(enabled: UserDefaults.standard.string(forKey: "demo") == nil)
     lazy var interventions = InterventionController(settings: settings)
     lazy var statusItem = StatusItemController(settings: settings, analyzers: analyzers, actions: self)
     lazy var coordinator = DraftCoordinator(
@@ -65,6 +66,10 @@ final class AppController {
 }
 
 extension AppController: StatusItemActions {
+    func checkForUpdates() {
+        updates.checkForUpdates()
+    }
+
     func showSettings() {
         windows.show(id: "settings", title: "Caution Flag Settings", size: CGSize(width: 560, height: 520)) {
             SettingsView()

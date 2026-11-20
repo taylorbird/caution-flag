@@ -8,6 +8,12 @@ public protocol ToneAnalyzer: Sendable {
     func analyze(_ text: String) async throws -> ToneResult
     /// Slower, only called when a rewrite will actually be shown.
     func suggestRewrite(_ text: String) async throws -> String?
+    /// A draft has started: load whatever the first score will need. Cheap to call.
+    func prepare()
+}
+
+extension ToneAnalyzer {
+    public func prepare() {}
 }
 
 public enum ToneAnalyzerError: Error, Equatable, CustomStringConvertible {

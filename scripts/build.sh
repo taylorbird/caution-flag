@@ -35,11 +35,22 @@ xcodebuild -project "$ROOT/CautionFlag.xcodeproj" -scheme CautionFlag -configura
 # (Monarch) show a blank icon at larger sizes. Replace it with a full 16–1024
 # set rendered from the app's own Liquid Glass icon, then re-sign: changing a
 # file inside the bundle breaks Xcode's seal, and Xcode can't see this step.
-if swift "$ROOT/scripts/render-icns.swift" "$BUILT" "$BUILT/Contents/Resources/AppIcon.icns"; then
-  codesign --force --options runtime --timestamp --sign "$IDENTITY" "$BUILT"
-else
-  echo "warning: kept actool's AppIcon.icns" >&2
+swift "$ROOT/scripts/render-icns.swift" "$BUILT" "$BUILT/Contents/Resources/AppIcon.icns" \
+  || echo "warning: kept actool's AppIcon.icns" >&2
+
+# Sparkle ships helper tools inside its framework. Notarization needs every one
+# signed with our Developer ID and the hardened runtime, innermost first.
+SPARKLE="$BUILT/Contents/Frameworks/Sparkle.framework"
+if [[ -d "$SPARKLE" ]]; then
+  sign() { codesign --force --options runtime --timestamp --sign "$IDENTITY" "$@"; }
+  for xpc in "$SPARKLE"/Versions/B/XPCServices/*.xpc(N); do
+    sign --preserve-metadata=entitlements "$xpc"
+  done
+  [[ -e "$SPARKLE/Versions/B/Autoupdate" ]] && sign "$SPARKLE/Versions/B/Autoupdate"
+  [[ -d "$SPARKLE/Versions/B/Updater.app" ]] && sign "$SPARKLE/Versions/B/Updater.app"
+  sign "$SPARKLE"
 fi
+codesign --force --options runtime --timestamp --sign "$IDENTITY" "$BUILT"
 codesign --verify --strict --deep "$BUILT"
 
 (( INSTALL )) || { echo "Built $BUILT"; exit 0; }
