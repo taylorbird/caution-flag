@@ -272,6 +272,14 @@ final class DraftCoordinator {
                 if !runApplies { assessment = alone }
             }
             self.analysisTask = nil
+            if self.session?.runApplies != runApplies {
+                // What the flag is about changed (run vs. draft); an earlier rewrite no longer fits.
+                self.session?.rewriteRequestedFor = nil
+                self.session?.lastAssessment?.rewrite = nil
+                self.rewriteTask?.cancel()
+                self.rewriteTask = nil
+                self.interventions.updateRewrite(nil)
+            }
             self.session?.runApplies = runApplies
             self.apply(assessment, text: text)
 
@@ -302,7 +310,7 @@ final class DraftCoordinator {
     private func apply(_ assessment: ToneAssessment, text: String) {
         guard session != nil, let snapshot = latest else { return }
         // Scores and timing only; never the text.
-        log.notice("assessed score=\(assessment.score, format: .fixed(precision: 1)) level=\(assessment.level.rawValue) runContext=\(self.session?.burstContext?.count ?? 0) runApplies=\(self.session?.runApplies == true)")
+        log.notice("assessed score=\(assessment.score, format: .fixed(precision: 1)) level=\(assessment.level.name, privacy: .public) runContext=\(self.session?.burstContext?.count ?? 0) runApplies=\(self.session?.runApplies == true)")
         session?.lastAssessment = assessment
         status.level = assessment.level
 
@@ -405,7 +413,7 @@ extension DraftCoordinator: InterventionActions {
                         sensitivity: settings.sensitivity, burst: session?.runApplies == true)
         // Quiet for the rest of this draft, but the controller hides the UI after a brief thanks.
         session?.dismissed = true
-        log.notice("misread filed score=\(assessment.score, format: .fixed(precision: 1)) level=\(assessment.level.rawValue)")
+        log.notice("misread filed score=\(assessment.score, format: .fixed(precision: 1)) level=\(assessment.level.name, privacy: .public)")
         return true
     }
 
@@ -460,6 +468,10 @@ extension DraftCoordinator: InterventionActions {
         session?.rewriteRequestedFor = nil
         explainTask?.cancel()
         explainTask = nil
+        // A rewrite in flight was for the whole run; drop it so the draft gets its own.
+        rewriteTask?.cancel()
+        rewriteTask = nil
+        interventions.updateRewrite(nil)
         interventions.setWhy(.idle)
         interventions.hideAll()
         log.notice("run dropped for this draft")

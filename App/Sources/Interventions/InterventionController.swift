@@ -101,10 +101,16 @@ final class InterventionController {
     private func keepClearOfMessageBox() {
         guard let anchor else { return }
         let box = anchor.insetBy(dx: -4, dy: -4)
-        if let nudge, nudge.isVisible, nudge.frame.intersects(box) {
+        // Also re-place a window that grew past the screen edge (it grows upward).
+        func offScreen(_ frame: CGRect) -> Bool {
+            let screen = NSScreen.screens.first { $0.frame.intersects(frame) } ?? NSScreen.main
+            return !(screen?.visibleFrame.contains(frame) ?? true)
+        }
+        if let nudge, nudge.isVisible, nudge.frame.intersects(box) || offScreen(nudge.frame) {
             place(nudge, "nudge")
         }
-        if settings.panelPlacement == .nearMessage, let panel, panel.isVisible, panel.frame.intersects(box) {
+        if settings.panelPlacement == .nearMessage, let panel, panel.isVisible,
+           panel.frame.intersects(box) || offScreen(panel.frame) {
             place(panel, "panel")
         }
     }
@@ -161,7 +167,11 @@ final class InterventionController {
     /// The nudge fades on its own, unless the user opened Why and is reading.
     private func scheduleNudgeFade() {
         nudgeHideTask?.cancel()
-        guard nudgeModel.why == .idle else { return }
+        // Hold still while Why is loading or being read; a failed Why fades like normal.
+        switch nudgeModel.why {
+        case .loading, .ready: return
+        case .idle, .failed: break
+        }
         let seconds: Double = nudgeModel.style == .warm ? 12 : 8
         nudgeHideTask = Task { [weak self] in
             try? await Task.sleep(for: .seconds(seconds))
@@ -176,7 +186,7 @@ final class InterventionController {
     func setWhy(_ state: WhyState) {
         nudgeModel.why = state
         panelModel.why = state
-        if state != .idle { nudgeHideTask?.cancel() }
+        if case .failed = state { scheduleNudgeFade() } else if state != .idle { nudgeHideTask?.cancel() }
         keepClearSoon()
     }
 

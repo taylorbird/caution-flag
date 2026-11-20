@@ -66,7 +66,9 @@ public struct OllamaToneAnalyzer: ToneAnalyzer {
 
     public func explain(_ text: String, assessment: ToneAssessment) async throws -> ToneExplanation {
         var request = try makeRequest(for: text)
-        var body = try JSONSerialization.jsonObject(with: request.httpBody!) as! [String: Any]
+        guard let requestBody = request.httpBody,
+              var body = try JSONSerialization.jsonObject(with: requestBody) as? [String: Any]
+        else { throw ToneAnalyzerError.badResponse("couldn't build the explain request") }
         body["format"] = TonePrompt.explainSchema
         body["options"] = ["temperature": 0.3, "num_predict": 250]
         body["messages"] = [

@@ -24,7 +24,7 @@ private struct GeneralSettings: View {
     static func speedCheckSummary(_ level: Double) -> String {
         let t = BurstTracker.tuning(level: level)
         let messages = t.minPriorSends + 1
-        return "Counts \(messages)+ messages, each under \(t.maxLength) characters, sent within \(Int(t.maxGap)) s of each other."
+        return "Counts \(messages)+ messages in a row (including the one you're writing), each under \(t.maxLength) characters, sent within \(Int(t.maxGap)) s of each other."
     }
 
     var body: some View {
